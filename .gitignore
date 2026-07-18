@@ -1,0 +1,9 @@
+# Binaries
+halo
+halo.exe
+
+# Testing
+*.test
+*.out
+*.log
+.gemini/
