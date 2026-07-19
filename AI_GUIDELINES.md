@@ -37,5 +37,8 @@ This document defines the strict engineering standards, architectural boundaries
 * All code must format perfectly with native `go fmt`.
 * Adhere to strict linting rules defined by `golangci-lint` configurations.
 * Keep functions tightly focused on a single responsibility. Return errors as the final value from functions and handle them immediately at the call site.
-* **Git Commits:** AI agents must never add themselves as a co-author (e.g., using `Co-authored-by` metadata trailers) for git commits.
+* **Git Commits:**
+  * AI agents must follow clean git branching strategies: develop in dedicated feature branches, and merge them back to the main branch (`master`) only after tests and validations pass.
+  * Group modifications into logical, atomic commits with descriptive commit messages.
+  * AI agents must never add themselves as a co-author (e.g., using `Co-authored-by` metadata trailers) for git commits.
 
