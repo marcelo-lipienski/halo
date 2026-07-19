@@ -284,11 +284,10 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 		}
 
 		if matchedContainer == nil {
-			reachabilityPassed = false
 			results = append(results, output.CheckResult{
 				Group:      "Network & Port Availability",
 				Name:       fmt.Sprintf("Service %s unreachable", svcName),
-				Status:     output.CheckFailed,
+				Status:     output.CheckWarning,
 				Error:      fmt.Sprintf("No container found for service %s in project %s", svcName, projectName),
 				Mitigation: fmt.Sprintf("Run: docker compose up -d %s", svcName),
 			})
