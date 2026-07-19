@@ -1616,3 +1616,46 @@ func TestCheckReadPermissionAutoFix(t *testing.T) {
 	})
 }
 
+func TestEngineMissingContainerWarning(t *testing.T) {
+	tempDir := t.TempDir()
+	composeContent := `
+services:
+  app:
+    image: nginx
+`
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	_ = os.WriteFile(composePath, []byte(composeContent), 0644)
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse: %v", err)
+	}
+
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{Items: []container.Summary{}}, nil
+		},
+	}
+
+	engine := NewEngine(tempDir, composePath, nil, comp, mockDocker)
+	report := engine.Run(context.Background())
+
+	if report.Status != output.StatusHealthy {
+		t.Errorf("expected status healthy when only warnings are present, got %s", report.Status)
+	}
+
+	foundWarning := false
+	for _, check := range report.Checks {
+		if check.Group == "Network & Port Availability" &&
+			check.Status == output.CheckWarning &&
+			strings.Contains(check.Name, "app unreachable") {
+			foundWarning = true
+			break
+		}
+	}
+	if !foundWarning {
+		t.Error("expected to find CheckWarning for unreachable service 'app'")
+	}
+}
+
+
