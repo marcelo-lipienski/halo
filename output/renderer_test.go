@@ -36,6 +36,31 @@ func TestRenderJSON(t *testing.T) {
 	}
 }
 
+// TestRenderJSONOmitEmpty ensures optional fields are omitted when empty.
+func TestRenderJSONOmitEmpty(t *testing.T) {
+	report := &DiagnosticsReport{
+		Status:     StatusHealthy,
+		DurationMs: 0,
+		Checks: []CheckResult{
+			{Group: "G", Name: "N", Status: CheckPassed},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := RenderJSON(&buf, report); err != nil {
+		t.Fatalf("unexpected render error: %v", err)
+	}
+
+	// "error" and "mitigation" should not appear in output when they are empty strings.
+	raw := buf.String()
+	if strings.Contains(raw, `"error"`) {
+		t.Errorf("expected 'error' field to be omitted when empty, got: %s", raw)
+	}
+	if strings.Contains(raw, `"mitigation"`) {
+		t.Errorf("expected 'mitigation' field to be omitted when empty, got: %s", raw)
+	}
+}
+
 func TestRenderText(t *testing.T) {
 	report := &DiagnosticsReport{
 		Status:     StatusEnvironmentBroken,
@@ -59,9 +84,136 @@ func TestRenderText(t *testing.T) {
 		t.Errorf("missing header in text output: %s", outputStr)
 	}
 	if !strings.Contains(outputStr, "something went wrong") {
-		t.Errorf("missing error details in text output when verbose is true: %s", outputStr)
+		t.Errorf("missing error details in text output: %s", outputStr)
 	}
 	if !strings.Contains(outputStr, "fix it now") {
 		t.Errorf("missing mitigation details in text output: %s", outputStr)
+	}
+}
+
+// TestRenderTextFailureAlwaysShowsError verifies that error detail is shown on
+// CheckFailed results even when verbose is false.
+func TestRenderTextFailureAlwaysShowsError(t *testing.T) {
+	report := &DiagnosticsReport{
+		Status:     StatusEnvironmentBroken,
+		DurationMs: 5,
+		Checks: []CheckResult{
+			{
+				Group:      "G",
+				Name:       "N",
+				Status:     CheckFailed,
+				Error:      "critical failure detail",
+				Mitigation: "do the thing",
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	RenderText(&buf, report, false) // verbose = false
+
+	outputStr := buf.String()
+	if !strings.Contains(outputStr, "critical failure detail") {
+		t.Errorf("expected error detail to be shown on failures even with verbose=false, got: %s", outputStr)
+	}
+}
+
+// TestRenderTextWarning verifies CheckWarning rendering respects the verbose flag.
+func TestRenderTextWarning(t *testing.T) {
+	report := &DiagnosticsReport{
+		Status:     StatusEnvironmentBroken,
+		DurationMs: 1,
+		Checks: []CheckResult{
+			{
+				Group:      "G",
+				Name:       "Warn Check",
+				Status:     CheckWarning,
+				Error:      "minor warning detail",
+				Mitigation: "maybe fix this",
+			},
+		},
+	}
+
+	// verbose=false: warning error detail should be hidden
+	var buf bytes.Buffer
+	RenderText(&buf, report, false)
+	if strings.Contains(buf.String(), "minor warning detail") {
+		t.Errorf("expected warning error to be hidden when verbose=false, got: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "maybe fix this") {
+		t.Errorf("expected mitigation to always be shown for warnings, got: %s", buf.String())
+	}
+
+	// verbose=true: warning error detail should be visible
+	buf.Reset()
+	RenderText(&buf, report, true)
+	if !strings.Contains(buf.String(), "minor warning detail") {
+		t.Errorf("expected warning error to be shown when verbose=true, got: %s", buf.String())
+	}
+}
+
+// TestRenderTextHealthy verifies healthy report rendering with summary line.
+func TestRenderTextHealthy(t *testing.T) {
+	report := &DiagnosticsReport{
+		Status:     StatusHealthy,
+		DurationMs: 12,
+		Checks: []CheckResult{
+			{Group: "Group A", Name: "Check 1", Status: CheckPassed},
+			{Group: "Group A", Name: "Check 2", Status: CheckPassed},
+		},
+	}
+
+	var buf bytes.Buffer
+	RenderText(&buf, report, false)
+
+	outputStr := buf.String()
+	if !strings.Contains(outputStr, "healthy") {
+		t.Errorf("expected 'healthy' in output, got: %s", outputStr)
+	}
+	// Summary line: "2 of 2 checks passed."
+	if !strings.Contains(outputStr, "2 of 2 checks passed") {
+		t.Errorf("expected summary line '2 of 2 checks passed', got: %s", outputStr)
+	}
+}
+
+// TestRenderTextEmptyChecks verifies graceful handling of an empty checks slice.
+func TestRenderTextEmptyChecks(t *testing.T) {
+	report := &DiagnosticsReport{
+		Status:     StatusHealthy,
+		DurationMs: 0,
+		Checks:     []CheckResult{},
+	}
+
+	var buf bytes.Buffer
+	// Should not panic
+	RenderText(&buf, report, false)
+
+	outputStr := buf.String()
+	if !strings.Contains(outputStr, "=== halo Diagnostics Report ===") {
+		t.Errorf("missing header for empty report: %s", outputStr)
+	}
+	// No summary line expected when there are no checks
+	if strings.Contains(outputStr, "of 0 checks") {
+		t.Errorf("unexpected summary line for empty checks: %s", outputStr)
+	}
+}
+
+// TestRenderTextSummaryWithFailures verifies the failure count in the summary line.
+func TestRenderTextSummaryWithFailures(t *testing.T) {
+	report := &DiagnosticsReport{
+		Status:     StatusEnvironmentBroken,
+		DurationMs: 8,
+		Checks: []CheckResult{
+			{Group: "G", Name: "Pass", Status: CheckPassed},
+			{Group: "G", Name: "Fail1", Status: CheckFailed, Error: "e1"},
+			{Group: "G", Name: "Fail2", Status: CheckFailed, Error: "e2"},
+		},
+	}
+
+	var buf bytes.Buffer
+	RenderText(&buf, report, false)
+
+	outputStr := buf.String()
+	if !strings.Contains(outputStr, "1 of 3 checks passed (2 failed)") {
+		t.Errorf("expected summary '1 of 3 checks passed (2 failed)', got: %s", outputStr)
 	}
 }

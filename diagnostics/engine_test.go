@@ -1304,22 +1304,89 @@ services:
 
 func BenchmarkEngineRun(b *testing.B) {
 	tempDir := b.TempDir()
+
+	// Realistic multi-service compose fixture covering env vars, ports, and bind volumes
 	composeContent := `
 services:
   web:
-    image: nginx
+    image: nginx:alpine
+    environment:
+      - PORT=${APP_PORT:-8080}
+      - DB_HOST=${DB_HOST}
+    ports:
+      - "${APP_PORT:-8080}:80"
+    volumes:
+      - ./html:/var/www/html
+      - ./logs:/var/log/nginx
+  api:
+    image: node:20-alpine
+    environment:
+      DB_URL: "postgres://${DB_USER}:${DB_PASS}@db:5432/app"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./api:/app
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db_data:/var/lib/postgresql/data
 `
 	composePath := filepath.Join(tempDir, "docker-compose.yml")
-	_ = os.WriteFile(composePath, []byte(composeContent), 0644)
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		b.Fatalf("failed to write compose file: %v", err)
+	}
 
-	comp, _ := config.ParseCompose(composePath)
-	env := map[string]string{}
+	// Create bind-mount directories so volume checks don't fail on missing paths
+	for _, dir := range []string{"html", "logs", "api", "db_data"} {
+		if err := os.Mkdir(filepath.Join(tempDir, dir), 0755); err != nil {
+			b.Fatalf("failed to create dir %s: %v", dir, err)
+		}
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		b.Fatalf("failed to parse compose: %v", err)
+	}
+
+	env := map[string]string{
+		"APP_PORT": "8080",
+		"DB_HOST":  "localhost",
+		"DB_USER":  "postgres",
+		"DB_PASS":  "secret",
+	}
+
+	projName := filepath.Base(tempDir)
 	mockDocker := &mockDockerClient{
 		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
-			return client.ContainerListResult{}, nil
+			return client.ContainerListResult{
+				Items: []container.Summary{
+					{ID: "id-web", State: "running", Labels: map[string]string{
+						"com.docker.compose.project": projName,
+						"com.docker.compose.service": "web",
+					}},
+					{ID: "id-api", State: "running", Labels: map[string]string{
+						"com.docker.compose.project": projName,
+						"com.docker.compose.service": "api",
+					}},
+					{ID: "id-db", State: "running", Labels: map[string]string{
+						"com.docker.compose.project": projName,
+						"com.docker.compose.service": "db",
+					}},
+				},
+			}, nil
 		},
 		inspectFunc: func(ctx context.Context, containerID string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
-			return client.ContainerInspectResult{}, nil
+			return client.ContainerInspectResult{
+				Container: container.InspectResponse{
+					State: &container.State{Running: true},
+				},
+			}, nil
 		},
 	}
 
@@ -1331,5 +1398,3 @@ services:
 		_ = engine.Run(ctx)
 	}
 }
-
-

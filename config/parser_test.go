@@ -398,11 +398,6 @@ func TestMergeComposeConfigsOverlappingVolumes(t *testing.T) {
 		t.Errorf("expected first volume to be ./other, got %+v", web.Volumes[0])
 	}
 
-	// First volume should be "./other" -> "/other"
-	if web.Volumes[0].Source != "./other" || web.Volumes[0].Target != "/other" {
-		t.Errorf("expected first volume to be ./other, got %+v", web.Volumes[0])
-	}
-
 	// Second volume should be "./data-new" -> "/data" (overridden)
 	if web.Volumes[1].Source != "./data-new" || web.Volumes[1].Target != "/data" {
 		t.Errorf("expected second volume to be ./data-new, got %+v", web.Volumes[1])
