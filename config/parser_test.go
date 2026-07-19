@@ -398,9 +398,134 @@ func TestMergeComposeConfigsOverlappingVolumes(t *testing.T) {
 		t.Errorf("expected first volume to be ./other, got %+v", web.Volumes[0])
 	}
 
+	// First volume should be "./other" -> "/other"
+	if web.Volumes[0].Source != "./other" || web.Volumes[0].Target != "/other" {
+		t.Errorf("expected first volume to be ./other, got %+v", web.Volumes[0])
+	}
+
 	// Second volume should be "./data-new" -> "/data" (overridden)
 	if web.Volumes[1].Source != "./data-new" || web.Volumes[1].Target != "/data" {
 		t.Errorf("expected second volume to be ./data-new, got %+v", web.Volumes[1])
+	}
+}
+
+func TestParseSecretsAndConfigs(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web:
+    image: nginx
+secrets:
+  my_secret:
+    file: ./secret.txt
+  ext_secret:
+    external: true
+configs:
+  my_config:
+    file: ./config.txt
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose: %v", err)
+	}
+
+	cfg, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.Secrets) != 2 {
+		t.Errorf("expected 2 secrets, got %d", len(cfg.Secrets))
+	}
+	sec, ok := cfg.Secrets["my_secret"]
+	if !ok || sec.File != "./secret.txt" {
+		t.Errorf("unexpected secret configuration: %+v", sec)
+	}
+
+	if len(cfg.Configs) != 1 {
+		t.Errorf("expected 1 config, got %d", len(cfg.Configs))
+	}
+	conf, ok := cfg.Configs["my_config"]
+	if !ok || conf.File != "./config.txt" {
+		t.Errorf("unexpected config configuration: %+v", conf)
+	}
+}
+
+func TestAnonymousVolumeParsing(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web:
+    volumes:
+      - /var/lib/mysql
+      - named-vol:/var/lib/other
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose: %v", err)
+	}
+
+	cfg, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	web := cfg.Services["web"]
+	if len(web.Volumes) != 2 {
+		t.Fatalf("expected 2 volumes, got %d", len(web.Volumes))
+	}
+
+	// First should be anonymous volume (type: volume, empty source, target /var/lib/mysql)
+	if web.Volumes[0].Type != "volume" || web.Volumes[0].Source != "" || web.Volumes[0].Target != "/var/lib/mysql" {
+		t.Errorf("unexpected volume 0: %+v", web.Volumes[0])
+	}
+
+	// Second should be named volume (type: volume, source named-vol, target /var/lib/other)
+	if web.Volumes[1].Type != "volume" || web.Volumes[1].Source != "named-vol" || web.Volumes[1].Target != "/var/lib/other" {
+		t.Errorf("unexpected volume 1: %+v", web.Volumes[1])
+	}
+}
+
+func BenchmarkParseCompose(b *testing.B) {
+	tempDir := b.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web:
+    image: nginx
+    ports:
+      - "80:80"
+  db:
+    image: postgres
+    volumes:
+      - ./data:/var/lib/postgresql/data
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		b.Fatalf("failed to write temp compose file: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = ParseCompose(composePath)
+	}
+}
+
+func BenchmarkParseEnv(b *testing.B) {
+	tempDir := b.TempDir()
+	envPath := filepath.Join(tempDir, ".env")
+	envContent := `
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASS=secret
+`
+	if err := os.WriteFile(envPath, []byte(envContent), 0644); err != nil {
+		b.Fatalf("failed to write temp env file: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = ParseEnv(envPath)
 	}
 }
 

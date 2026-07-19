@@ -17,12 +17,29 @@ func ParseEnv(path string) (map[string]string, error) {
 
 // ComposeConfig represents the root of docker-compose.yml
 type ComposeConfig struct {
-	Services map[string]ComposeService `yaml:"services"`
-	Volumes  map[string]interface{}    `yaml:"volumes"`
+	Services map[string]ComposeService   `yaml:"services"`
+	Volumes  map[string]interface{}      `yaml:"volumes"`
+	Secrets  map[string]ComposeSecret    `yaml:"secrets"`
+	Configs  map[string]ComposeConfigDef `yaml:"configs"`
 }
 
 // StringOrSlice represents a YAML field that can be a single string or a slice of strings
 type StringOrSlice []string
+
+// ComposeSecret represents a secret definition in compose
+type ComposeSecret struct {
+	File     string      `yaml:"file"`
+	External interface{} `yaml:"external"`
+	BaseDir  string
+}
+
+// ComposeConfigDef represents a config definition in compose
+type ComposeConfigDef struct {
+	File     string      `yaml:"file"`
+	External interface{} `yaml:"external"`
+	BaseDir  string
+}
+
 
 // UnmarshalYAML implements custom decoding for StringOrSlice
 func (ss *StringOrSlice) UnmarshalYAML(value *yaml.Node) error {
@@ -187,8 +204,18 @@ func (cv *ComposeVolume) UnmarshalYAML(value *yaml.Node) error {
 			}
 		}
 		cv.Type = "bind"
-		// If Source is a simple name (doesn't start with path characters or Windows drive letter), assume it is a named volume
-		if !strings.HasPrefix(cv.Source, "/") && !strings.HasPrefix(cv.Source, "./") && !strings.HasPrefix(cv.Source, "../") && cv.Source != "~" && cv.Source != "." && !isWindowsDrivePath(cv.Source) {
+		if !strings.Contains(s, ":") {
+			cv.Type = "volume"
+			if strings.HasPrefix(s, "/") || strings.HasPrefix(s, "./") || strings.HasPrefix(s, "../") || s == "~" || s == "." {
+				// Anonymous volume target
+				cv.Source = ""
+				cv.Target = s
+			} else {
+				// Named volume source
+				cv.Source = s
+				cv.Target = ""
+			}
+		} else if !strings.HasPrefix(cv.Source, "/") && !strings.HasPrefix(cv.Source, "./") && !strings.HasPrefix(cv.Source, "../") && cv.Source != "~" && cv.Source != "." && !isWindowsDrivePath(cv.Source) {
 			cv.Type = "volume"
 		}
 	case yaml.MappingNode:
@@ -241,6 +268,22 @@ func ParseCompose(path string) (*ComposeConfig, error) {
 		config.Services[svcName] = svc
 	}
 
+	if config.Secrets == nil {
+		config.Secrets = make(map[string]ComposeSecret)
+	}
+	for name, sec := range config.Secrets {
+		sec.BaseDir = baseDir
+		config.Secrets[name] = sec
+	}
+
+	if config.Configs == nil {
+		config.Configs = make(map[string]ComposeConfigDef)
+	}
+	for name, cfg := range config.Configs {
+		cfg.BaseDir = baseDir
+		config.Configs[name] = cfg
+	}
+
 	return &config, nil
 }
 
@@ -250,6 +293,8 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 	merged := &ComposeConfig{
 		Services: make(map[string]ComposeService),
 		Volumes:  make(map[string]interface{}),
+		Secrets:  make(map[string]ComposeSecret),
+		Configs:  make(map[string]ComposeConfigDef),
 	}
 
 	for _, config := range configs {
@@ -314,6 +359,16 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 		// Merge root-level Volumes
 		for volName, volDef := range config.Volumes {
 			merged.Volumes[volName] = volDef
+		}
+
+		// Merge Secrets
+		for secName, secDef := range config.Secrets {
+			merged.Secrets[secName] = secDef
+		}
+
+		// Merge Configs
+		for cfgName, cfgDef := range config.Configs {
+			merged.Configs[cfgName] = cfgDef
 		}
 	}
 
