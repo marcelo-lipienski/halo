@@ -13,23 +13,29 @@ func TestParseEnv(t *testing.T) {
 	envPath := filepath.Join(tempDir, ".env")
 	envContent := `
 # A comment line
-DB_HOST=localhost
+DB_HOST=localhost # Hostname
 DB_PORT=5432
-DB_USER="postgres"
-DB_PASS='secret'
+DB_USER="postgres" # Inline comment after double quote
+DB_PASS='secret' # Inline comment after single quote
 # Another comment
 EMPTY_VAR=
+COMMENT_VAR="secret#key" # Comment inside quotes
+UNQUOTED_COMMENT=foo #bar
+UNQUOTED_NO_COMMENT=foo#bar
 `
 	if err := os.WriteFile(envPath, []byte(envContent), 0644); err != nil {
 		t.Fatalf("failed to write temp env file: %v", err)
 	}
 
 	expected := map[string]string{
-		"DB_HOST":   "localhost",
-		"DB_PORT":   "5432",
-		"DB_USER":   "postgres",
-		"DB_PASS":   "secret",
-		"EMPTY_VAR": "",
+		"DB_HOST":             "localhost",
+		"DB_PORT":             "5432",
+		"DB_USER":             "postgres",
+		"DB_PASS":             "secret",
+		"EMPTY_VAR":           "",
+		"COMMENT_VAR":         "secret#key",
+		"UNQUOTED_COMMENT":    "foo",
+		"UNQUOTED_NO_COMMENT": "foo#bar",
 	}
 
 	result, err := ParseEnv(envPath)
@@ -126,5 +132,76 @@ services:
 
 	if db.Volumes[0].Source != "./db_data" || db.Volumes[0].Target != "/var/lib/postgresql/data" || db.Volumes[0].Type != "bind" {
 		t.Errorf("unexpected db volume: %+v", db.Volumes[0])
+	}
+}
+
+func TestStringOrSlice(t *testing.T) {
+	composeContent := `
+services:
+  web:
+    entrypoint: /bin/sh
+    command: ["-c", "echo hello"]
+`
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose file: %v", err)
+	}
+
+	config, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("unexpected error parsing compose: %v", err)
+	}
+
+	web, ok := config.Services["web"]
+	if !ok {
+		t.Fatal("web service not found")
+	}
+
+	expectedEntrypoint := StringOrSlice{"/bin/sh"}
+	if !reflect.DeepEqual(web.Entrypoint, expectedEntrypoint) {
+		t.Errorf("entrypoint expected %v, got %v", expectedEntrypoint, web.Entrypoint)
+	}
+
+	expectedCommand := StringOrSlice{"-c", "echo hello"}
+	if !reflect.DeepEqual(web.Command, expectedCommand) {
+		t.Errorf("command expected %v, got %v", expectedCommand, web.Command)
+	}
+}
+
+func TestWindowsVolumeParsing(t *testing.T) {
+	composeContent := `
+services:
+  web:
+    volumes:
+      - C:\host\data:/container/data
+      - D:/another/path:/container/another:ro
+`
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose file: %v", err)
+	}
+
+	config, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("unexpected error parsing compose: %v", err)
+	}
+
+	web, ok := config.Services["web"]
+	if !ok {
+		t.Fatal("web service not found")
+	}
+
+	if len(web.Volumes) != 2 {
+		t.Fatalf("expected 2 volumes, got %d", len(web.Volumes))
+	}
+
+	if web.Volumes[0].Source != `C:\host\data` || web.Volumes[0].Target != `/container/data` || web.Volumes[0].Type != "bind" {
+		t.Errorf("unexpected volume 0: %+v", web.Volumes[0])
+	}
+
+	if web.Volumes[1].Source != `D:/another/path` || web.Volumes[1].Target != `/container/another` || web.Volumes[1].Type != "bind" {
+		t.Errorf("unexpected volume 1: %+v", web.Volumes[1])
 	}
 }
