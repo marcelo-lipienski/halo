@@ -17,6 +17,7 @@ type Engine struct {
 	Env         map[string]string
 	Compose     *config.ComposeConfig
 	DockerCli   client.ContainerAPIClient
+	AutoFix     bool
 }
 
 // NewEngine instantiates a new Diagnostics Engine
@@ -33,42 +34,43 @@ func NewEngine(configDir, composePath string, env map[string]string, compose *co
 // Run executes the diagnostic check groups concurrently with appropriate timeouts
 func (e *Engine) Run(ctx context.Context) *output.DiagnosticsReport {
 	start := time.Now()
-	var results []output.CheckResult
-	var mu sync.Mutex
+	var resultsA []output.CheckResult
+	var resultsB []output.CheckResult
+	var resultsC []output.CheckResult
 
 	var wg sync.WaitGroup
 	wg.Add(3)
 
-	runGroup := func(groupCtx context.Context, checkFn func(context.Context) []output.CheckResult) {
-		defer wg.Done()
-		groupResults := checkFn(groupCtx)
-		mu.Lock()
-		results = append(results, groupResults...)
-		mu.Unlock()
-	}
-
 	// Group A: Environmental Alignment
 	go func() {
+		defer wg.Done()
 		gCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		runGroup(gCtx, e.checkEnvironmentalAlignment)
+		resultsA = e.checkEnvironmentalAlignment(gCtx)
 	}()
 
 	// Group B: Network & Port Availability
 	go func() {
+		defer wg.Done()
 		gCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		runGroup(gCtx, e.checkNetworkAndPort)
+		resultsB = e.checkNetworkAndPort(gCtx)
 	}()
 
 	// Group C: Volume & File Permissions
 	go func() {
+		defer wg.Done()
 		gCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		runGroup(gCtx, e.checkVolumeAndPermissions)
+		resultsC = e.checkVolumeAndPermissions(gCtx)
 	}()
 
 	wg.Wait()
+
+	var results []output.CheckResult
+	results = append(results, resultsA...)
+	results = append(results, resultsB...)
+	results = append(results, resultsC...)
 
 	// Determine overall status
 	status := output.StatusHealthy
