@@ -266,7 +266,7 @@ func TestEngineOwnContainerPortBypass(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to listen on local port: %v", err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 
 	_, portStr, err := net.SplitHostPort(l.Addr().String())
 	if err != nil {
@@ -376,7 +376,7 @@ func TestEnginePortBindErrorState(t *testing.T) {
 		t.Fatalf("failed to get free port: %v", err)
 	}
 	_, portStr, _ := net.SplitHostPort(l.Addr().String())
-	l.Close() // Close immediately so the port is free
+	_ = l.Close() // Close immediately so the port is free
 
 	composeContent := fmt.Sprintf(`
 services:
@@ -461,7 +461,7 @@ func TestEnginePortBindErrorStateWithActiveCollision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to listen on local port: %v", err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 
 	_, portStr, _ := net.SplitHostPort(l.Addr().String())
 
@@ -548,7 +548,7 @@ func TestEnginePortRangeCollision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to listen on local port: %v", err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 
 	_, portStr, _ := net.SplitHostPort(l.Addr().String())
 	portVal, _ := strconv.Atoi(portStr)
@@ -613,9 +613,7 @@ func TestEngineVolumeTildeExpansion(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Override HOME environment variable
-	oldHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", oldHome)
-	os.Setenv("HOME", tempDir)
+	t.Setenv("HOME", tempDir)
 
 	// Create a subdirectory inside tempDir to act as the expanded folder
 	subDirName := "mock_volume_data"
@@ -1180,13 +1178,14 @@ configs:
 	hasSecretPass := false
 	hasConfigPass := false
 	for _, check := range report2.Checks {
-		if check.Status == output.CheckPassed {
-			// They don't individually record passed unless volumeCheckPassed is true. But since we didn't specify volumes,
-			// volumeCheckPassed should be true and "Volume & File Permissions Check" should pass.
+		if check.Status == output.CheckPassed && check.Name == "Volume & File Permissions Check" {
+			hasSecretPass = true
+			hasConfigPass = true
 		}
 	}
-	_ = hasSecretPass
-	_ = hasConfigPass
+	if !hasSecretPass || !hasConfigPass {
+		t.Error("expected Volume & File Permissions Check to pass")
+	}
 }
 
 func TestEngineAutoFix(t *testing.T) {

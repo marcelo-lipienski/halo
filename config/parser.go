@@ -262,7 +262,7 @@ func ParseCompose(path string) (*ComposeConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var config ComposeConfig
 	dec := yaml.NewDecoder(file)

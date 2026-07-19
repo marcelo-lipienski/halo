@@ -186,11 +186,11 @@ func runCheck() {
 	// Merge all parsed configs according to docker-compose overrides rules
 	mergedComp := config.MergeComposeConfigs(parsedConfigs...)
 
-	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	dockerCli, err := client.New(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		exitWithSystemFailure(format, verbose, fmt.Sprintf("Failed to create Docker client: %v", err), "Verify your Docker environment variables are set correctly.")
 	}
-	defer dockerCli.Close()
+	defer func() { _ = dockerCli.Close() }()
 
 	pingCtx, pingCancel := context.WithTimeout(ctx, 2*time.Second)
 	defer pingCancel()
@@ -205,7 +205,7 @@ func runCheck() {
 	report := engine.Run(ctx)
 
 	if format == "json" {
-		output.RenderJSON(os.Stdout, report)
+		_ = output.RenderJSON(os.Stdout, report)
 	} else {
 		output.RenderText(os.Stdout, report, verbose)
 	}
@@ -231,7 +231,7 @@ func exitWithSystemFailure(format string, verbose bool, errStr, mitigationStr st
 		},
 	}
 	if format == "json" {
-		output.RenderJSON(os.Stdout, report)
+		_ = output.RenderJSON(os.Stdout, report)
 	} else {
 		output.RenderText(os.Stdout, report, verbose)
 	}
