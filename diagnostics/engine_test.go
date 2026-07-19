@@ -1302,6 +1302,73 @@ services:
 	}
 }
 
+func TestEngineHealthStarting(t *testing.T) {
+	tempDir := t.TempDir()
+	composeContent := `
+services:
+  app:
+    image: nginx
+`
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	_ = os.WriteFile(composePath, []byte(composeContent), 0644)
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse: %v", err)
+	}
+
+	projName := filepath.Base(tempDir)
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{
+				Items: []container.Summary{
+					{
+						ID:    "mock-id",
+						State: "running",
+						Labels: map[string]string{
+							"com.docker.compose.project": projName,
+							"com.docker.compose.service": "app",
+						},
+					},
+				},
+			}, nil
+		},
+		inspectFunc: func(ctx context.Context, containerID string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+			return client.ContainerInspectResult{
+				Container: container.InspectResponse{
+					State: &container.State{
+						Running: true,
+						Health: &container.Health{
+							Status: "starting",
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	engine := NewEngine(tempDir, composePath, nil, comp, mockDocker)
+	report := engine.Run(context.Background())
+
+	// A "starting" health state should be a warning, not failure, so status should be healthy
+	if report.Status != output.StatusHealthy {
+		t.Errorf("expected overall status healthy when check has only starting health warning, got: %s", report.Status)
+	}
+
+	hasWarning := false
+	for _, check := range report.Checks {
+		if check.Status == output.CheckWarning && strings.Contains(check.Name, "health is starting") {
+			hasWarning = true
+			if !strings.Contains(check.Error, "health check is still initialising") {
+				t.Errorf("expected warning details, got: %s", check.Error)
+			}
+		}
+	}
+	if !hasWarning {
+		t.Errorf("expected warning for starting health status, got checks: %+v", report.Checks)
+	}
+}
+
 func BenchmarkEngineRun(b *testing.B) {
 	tempDir := b.TempDir()
 
