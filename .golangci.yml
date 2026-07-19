@@ -13,6 +13,13 @@ linters:
     - staticcheck
     - ineffassign
 
+linters-settings:
+  errcheck:
+    exclude-functions:
+      - fmt.Fprintf
+      - fmt.Fprintln
+      - fmt.Fprint
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
