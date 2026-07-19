@@ -926,3 +926,79 @@ services:
 	}
 }
 
+func TestEngineEmptyVariableWarning(t *testing.T) {
+	tempDir := t.TempDir()
+
+	composeContent := `
+services:
+  app:
+    environment:
+      - PORT=${APP_PORT}
+`
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	// APP_PORT is defined but empty
+	env := map[string]string{
+		"APP_PORT": "",
+	}
+
+	projName := filepath.Base(tempDir)
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{
+				Items: []container.Summary{
+					{
+						ID:    "mock-id",
+						State: "running",
+						Labels: map[string]string{
+							"com.docker.compose.project": projName,
+							"com.docker.compose.service": "app",
+						},
+					},
+				},
+			}, nil
+		},
+		inspectFunc: func(ctx context.Context, containerID string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+			return client.ContainerInspectResult{
+				Container: container.InspectResponse{
+					State: &container.State{
+						Running: true,
+						Health:  nil,
+					},
+				},
+			}, nil
+		},
+	}
+
+	engine := NewEngine(tempDir, composePath, env, comp, mockDocker)
+	report := engine.Run(context.Background())
+
+	// Status should be healthy, not broken
+	if report.Status != output.StatusHealthy {
+		t.Errorf("expected status healthy for empty variable warning, got: %s", report.Status)
+	}
+
+	foundWarning := false
+	for _, check := range report.Checks {
+		if check.Group == "Environmental Alignment" && strings.Contains(check.Name, "Variable APP_PORT is empty") {
+			if check.Status != output.CheckWarning {
+				t.Errorf("expected warning status, got %s", check.Status)
+			}
+			foundWarning = true
+			break
+		}
+	}
+	if !foundWarning {
+		t.Error("expected to find warning for empty variable APP_PORT")
+	}
+}
+
+

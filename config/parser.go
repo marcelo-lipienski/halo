@@ -1,78 +1,17 @@
 package config
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 )
 
-// parseEnvValue cleans environment variable values by stripping inline comments
-// for unquoted values and extracting contents inside quotes.
-func parseEnvValue(val string) string {
-	val = strings.TrimSpace(val)
-	if len(val) == 0 {
-		return ""
-	}
-
-	// Double quoted value
-	if val[0] == '"' {
-		idx := strings.Index(val[1:], "\"")
-		if idx != -1 {
-			return val[1 : idx+1]
-		}
-	}
-
-	// Single quoted value
-	if val[0] == '\'' {
-		idx := strings.Index(val[1:], "'")
-		if idx != -1 {
-			return val[1 : idx+1]
-		}
-	}
-
-	// Unquoted: strip inline comments starting with # only if preceded by whitespace or at start
-	for i := 0; i < len(val); i++ {
-		if val[i] == '#' {
-			if i == 0 || val[i-1] == ' ' || val[i-1] == '\t' {
-				val = val[:i]
-				break
-			}
-		}
-	}
-	return strings.TrimSpace(val)
-}
-
 // ParseEnv parses a .env file and returns a map of keys to values.
 func ParseEnv(path string) (map[string]string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	env := make(map[string]string)
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		// Skip empty lines or comments
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		if strings.HasPrefix(key, "export ") {
-			key = strings.TrimSpace(strings.TrimPrefix(key, "export "))
-		}
-		val := parseEnvValue(parts[1])
-		env[key] = val
-	}
-	return env, scanner.Err()
+	return godotenv.Read(path)
 }
 
 // ComposeConfig represents the root of docker-compose.yml

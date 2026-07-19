@@ -26,6 +26,8 @@ const (
 	CheckPassed CheckStatus = "passed"
 	// CheckFailed indicates the check failed
 	CheckFailed CheckStatus = "failed"
+	// CheckWarning indicates the check found a non-critical issue
+	CheckWarning CheckStatus = "warning"
 )
 
 // CheckResult contains metadata and output of a diagnostic check execution
@@ -73,13 +75,21 @@ func RenderText(w io.Writer, report *DiagnosticsReport, verbose bool) {
 
 		if check.Status == CheckPassed {
 			fmt.Fprintf(w, "  \033[32m✓\033[0m %s\n", check.Name)
+		} else if check.Status == CheckWarning {
+			fmt.Fprintf(w, "  \033[33m⚠\033[0m %s\n", check.Name)
+			if check.Error != "" && verbose {
+				fmt.Fprintf(w, "    \033[90mWarning:\033[0m %s\n", check.Error)
+			}
+			if check.Mitigation != "" {
+				fmt.Fprintf(w, "    \033[36mFix:\033[0m     %s\n", check.Mitigation)
+			}
 		} else {
 			fmt.Fprintf(w, "  \033[31m✗\033[0m %s\n", check.Name)
 			if check.Error != "" && verbose {
-				fmt.Fprintf(w, "    \033[90mError:\033[0m %s\n", check.Error)
+				fmt.Fprintf(w, "    \033[90mError:\033[0m   %s\n", check.Error)
 			}
 			if check.Mitigation != "" {
-				fmt.Fprintf(w, "    \033[36mFix:\033[0m   %s\n", check.Mitigation)
+				fmt.Fprintf(w, "    \033[36mFix:\033[0m     %s\n", check.Mitigation)
 			}
 		}
 	}

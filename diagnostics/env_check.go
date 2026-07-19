@@ -126,7 +126,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 			results = append(results, output.CheckResult{
 				Group:      "Environmental Alignment",
 				Name:       fmt.Sprintf("Variable %s is empty", ref.name),
-				Status:     output.CheckFailed,
+				Status:     output.CheckWarning,
 				Error:      fmt.Sprintf("Environment variable %s is defined but empty in .env/host environment and has no default fallback in docker-compose.yml", ref.name),
 				Mitigation: fmt.Sprintf("Set a non-empty value for %s in your .env file or host environment", ref.name),
 			})
