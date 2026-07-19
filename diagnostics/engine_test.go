@@ -1658,4 +1658,72 @@ services:
 	}
 }
 
+func TestEngineDryRunMode(t *testing.T) {
+	tempDir := t.TempDir()
+	composeContent := `
+services:
+  app:
+    image: nginx
+    volumes:
+      - ./dryrun_missing_dir:/data
+      - ./dryrun_missing_file.txt:/data_file.txt
+`
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	_ = os.WriteFile(composePath, []byte(composeContent), 0644)
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse: %v", err)
+	}
+
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{Items: []container.Summary{}}, nil
+		},
+	}
+
+	engine := NewEngine(tempDir, composePath, nil, comp, mockDocker)
+	engine.DryRun = true
+
+	report := engine.Run(context.Background())
+
+	// Overall status must be broken since dry-run does not actually fix the environment
+	if report.Status != output.StatusEnvironmentBroken {
+		t.Errorf("expected overall status broken when checks fail under dry-run, got %s", report.Status)
+	}
+
+	// Verify that directories/files were NOT created on disk
+	missingDir := filepath.Join(tempDir, "dryrun_missing_dir")
+	if _, err := os.Stat(missingDir); err == nil {
+		t.Error("dryrun_missing_dir was created, but should not have been under dry-run mode")
+	}
+
+	missingFile := filepath.Join(tempDir, "dryrun_missing_file.txt")
+	if _, err := os.Stat(missingFile); err == nil {
+		t.Error("dryrun_missing_file.txt was created, but should not have been under dry-run mode")
+	}
+
+	// Verify check results have [Dry-Run] prefix
+	foundDryRunDirMsg := false
+	foundDryRunFileMsg := false
+	for _, check := range report.Checks {
+		if check.Group == "Volume & File Permissions" && check.Status == output.CheckFailed {
+			if strings.Contains(check.Error, "[Dry-Run] Would create missing directory") {
+				foundDryRunDirMsg = true
+			}
+			if strings.Contains(check.Error, "[Dry-Run] Would create missing file") {
+				foundDryRunFileMsg = true
+			}
+		}
+	}
+
+	if !foundDryRunDirMsg {
+		t.Error("expected to find dry-run error message for missing directory")
+	}
+	if !foundDryRunFileMsg {
+		t.Error("expected to find dry-run error message for missing file")
+	}
+}
+
+
 

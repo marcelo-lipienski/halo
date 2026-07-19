@@ -18,6 +18,7 @@ type Engine struct {
 	Compose     *config.ComposeConfig
 	DockerCli   client.ContainerAPIClient
 	AutoFix     bool
+	DryRun      bool
 }
 
 // NewEngine instantiates a new Diagnostics Engine

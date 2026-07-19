@@ -83,6 +83,27 @@ func (e *Engine) checkReadPermission(results []output.CheckResult, hostPath, vol
 		return results, true
 	}
 
+	pathType := "Directory"
+	if !info.IsDir() {
+		pathType = "File"
+	}
+
+	if e.DryRun {
+		originalMode := info.Mode()
+		newMode := os.FileMode(0755)
+		if !info.IsDir() {
+			newMode = 0644
+		}
+		results = append(results, output.CheckResult{
+			Group:      "Volume & File Permissions",
+			Name:       fmt.Sprintf("Volume read lockout: %s", volSource),
+			Status:     output.CheckFailed,
+			Error:      fmt.Sprintf("[Dry-Run] Would apply chmod %s (original: %s) to %s '%s'", newMode, originalMode, pathType, hostPath),
+			Mitigation: fmt.Sprintf("Run: chmod -R u+r %s or sudo chown -R $USER %s", hostPath, hostPath),
+		})
+		return results, false
+	}
+
 	if e.AutoFix {
 		originalMode := info.Mode()
 		newMode := os.FileMode(0755)
@@ -108,10 +129,6 @@ func (e *Engine) checkReadPermission(results []output.CheckResult, hostPath, vol
 		}
 	}
 
-	pathType := "Directory"
-	if !info.IsDir() {
-		pathType = "File"
-	}
 	errStr := fmt.Sprintf("%s '%s' for service %s is not readable by current host user.", pathType, hostPath, svcName)
 	if rErr != nil {
 		errStr = fmt.Sprintf("%s '%s' for service %s is not readable by current host user. System error: %v", pathType, hostPath, svcName, rErr)
@@ -134,6 +151,26 @@ func (e *Engine) checkWritePermission(results []output.CheckResult, hostPath, vo
 		return results
 	}
 
+	pathType := "Directory"
+	if !info.IsDir() {
+		pathType = "File"
+	}
+
+	if e.DryRun {
+		newMode := os.FileMode(0755)
+		if !info.IsDir() {
+			newMode = 0644
+		}
+		results = append(results, output.CheckResult{
+			Group:      "Volume & File Permissions",
+			Name:       fmt.Sprintf("Volume permission lockout: %s", volSource),
+			Status:     output.CheckFailed,
+			Error:      fmt.Sprintf("[Dry-Run] Would apply chmod %s to %s '%s'", newMode, pathType, hostPath),
+			Mitigation: fmt.Sprintf("Run: chmod -R u+rw %s or sudo chown -R $USER %s", hostPath, hostPath),
+		})
+		return results
+	}
+
 	if e.AutoFix {
 		mode := os.FileMode(0755)
 		if !info.IsDir() {
@@ -151,10 +188,6 @@ func (e *Engine) checkWritePermission(results []output.CheckResult, hostPath, vo
 		}
 	}
 
-	pathType := "Directory"
-	if !info.IsDir() {
-		pathType = "File"
-	}
 	errStr := fmt.Sprintf("%s '%s' for service %s is not writable by current host user.", pathType, hostPath, svcName)
 	if wErr != nil {
 		errStr = fmt.Sprintf("%s '%s' for service %s is not writable by current host user. System error: %v", pathType, hostPath, svcName, wErr)
@@ -265,6 +298,26 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 
 			info, err := os.Stat(hostPath)
 			if os.IsNotExist(err) {
+				if e.DryRun {
+					volumeCheckPassed = false
+					isLikelyFile := isLikelyFilePath(hostPath)
+					pathTypeStr := "directory"
+					permissions := "0775"
+					mitigation := fmt.Sprintf("Run: mkdir -p %s && chmod -R 775 %s", hostPath, hostPath)
+					if isLikelyFile {
+						pathTypeStr = "file"
+						permissions = "0664"
+						mitigation = fmt.Sprintf("Run: touch %s && chmod 664 %s", hostPath, hostPath)
+					}
+					results = append(results, output.CheckResult{
+						Group:      "Volume & File Permissions",
+						Name:       fmt.Sprintf("Volume source missing: %s", vol.Source),
+						Status:     output.CheckFailed,
+						Error:      fmt.Sprintf("[Dry-Run] Would create missing %s '%s' (permissions: %s)", pathTypeStr, hostPath, permissions),
+						Mitigation: mitigation,
+					})
+					continue
+				}
 				if e.AutoFix {
 					isLikelyFile := isLikelyFilePath(hostPath)
 					var fixErr error
@@ -385,6 +438,17 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 
 		_, err := os.Stat(secretPath)
 		if os.IsNotExist(err) {
+			if e.DryRun {
+				volumeCheckPassed = false
+				results = append(results, output.CheckResult{
+					Group:      "Volume & File Permissions",
+					Name:       fmt.Sprintf("Secret file missing: %s", secName),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("[Dry-Run] Would create missing secret file '%s' (permissions: 0600)", secretPath),
+					Mitigation: fmt.Sprintf("Run: touch %s", secretPath),
+				})
+				continue
+			}
 			if e.AutoFix {
 				dir := filepath.Dir(secretPath)
 				_ = os.MkdirAll(dir, 0755)
@@ -422,6 +486,17 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 		// Verify read permission
 		f, err := os.Open(secretPath)
 		if err != nil {
+			if e.DryRun {
+				volumeCheckPassed = false
+				results = append(results, output.CheckResult{
+					Group:      "Volume & File Permissions",
+					Name:       fmt.Sprintf("Secret read lockout: %s", secName),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("[Dry-Run] Would apply chmod 0600 to secret file '%s'", secretPath),
+					Mitigation: fmt.Sprintf("Run: chmod u+r %s or sudo chown $USER %s", secretPath, secretPath),
+				})
+				continue
+			}
 			if e.AutoFix {
 				if chmodErr := os.Chmod(secretPath, 0600); chmodErr == nil {
 					results = append(results, output.CheckResult{
@@ -492,6 +567,17 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 
 		_, err := os.Stat(cfgPath)
 		if os.IsNotExist(err) {
+			if e.DryRun {
+				volumeCheckPassed = false
+				results = append(results, output.CheckResult{
+					Group:      "Volume & File Permissions",
+					Name:       fmt.Sprintf("Config file missing: %s", cfgName),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("[Dry-Run] Would create missing config file '%s' (permissions: 0644)", cfgPath),
+					Mitigation: fmt.Sprintf("Run: touch %s", cfgPath),
+				})
+				continue
+			}
 			if e.AutoFix {
 				dir := filepath.Dir(cfgPath)
 				_ = os.MkdirAll(dir, 0755)
@@ -529,6 +615,17 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 		// Verify read permission
 		f, err := os.Open(cfgPath)
 		if err != nil {
+			if e.DryRun {
+				volumeCheckPassed = false
+				results = append(results, output.CheckResult{
+					Group:      "Volume & File Permissions",
+					Name:       fmt.Sprintf("Config read lockout: %s", cfgName),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("[Dry-Run] Would apply chmod 0644 to config file '%s'", cfgPath),
+					Mitigation: fmt.Sprintf("Run: chmod u+r %s or sudo chown $USER %s", cfgPath, cfgPath),
+				})
+				continue
+			}
 			if e.AutoFix {
 				if chmodErr := os.Chmod(cfgPath, 0644); chmodErr == nil {
 					results = append(results, output.CheckResult{
