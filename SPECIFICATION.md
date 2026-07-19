@@ -18,6 +18,12 @@ The tool must support the following command structure and flags:
 ### Global Flags
 * `--config-dir, -c <path>`
   Path to the directory containing local configuration files (Default: `.`).
+* `--env-file, -e <path>`
+  Explicit path to the `.env` file (Default: `.env` in config-dir).
+* `--compose-file <path>`
+  Explicit path(s) to the docker-compose.yml file (can specify multiple times).
+* `--fix`
+  Automatically attempt to mitigate file permission and missing directory/file issues.
 * `--format, -f <text|json>`
   Output format for results. `json` format prints a single structured payload to stdout for integration into setup automation scripts (Default: `text`).
 * `--verbose, -v`

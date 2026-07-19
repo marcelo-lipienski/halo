@@ -51,6 +51,22 @@ For automation pipelines or custom initialization scripts, request structured JS
 halo check --format json
 ```
 
+### Auto-Mitigation (Fixing Issues)
+
+To automatically attempt creating missing directories or fixing incorrect file permissions, use the `--fix` flag:
+
+```bash
+halo check --fix
+```
+
+### Custom Configurations
+
+To run diagnostics against specific configurations outside the current directory:
+
+```bash
+halo check --env-file /path/to/.env --compose-file /path/to/docker-compose.yml
+```
+
 ### Exit Codes
 
 `halo` returns standard semantic exit codes to safely embed into local developer automation workflows:
