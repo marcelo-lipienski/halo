@@ -279,6 +279,16 @@ fi
 
 ---
 
+## Known Limitations
+
+### Port Bypass Self-Exclusion
+
+When auditing port collisions, `halo` automatically excludes ports that are bound by the service's own active containers to prevent false-positive reports. This self-exclusion mechanism relies on standard Docker Compose labels (`com.docker.compose.project` and `com.docker.compose.service`). 
+
+If you are running standalone containers mapped to the same host ports without using Docker Compose (e.g., via manual `docker run` commands), they will lack these metadata labels. Consequently, their bound ports will always be flagged as port collisions by `halo`.
+
+---
+
 ## Development & Guidelines
 
 This project enforces strict **Test-Driven Development (TDD)** and leverages modern Go ^1.26 concurrency primitives and error handling patterns.
