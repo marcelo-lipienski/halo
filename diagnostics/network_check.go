@@ -262,6 +262,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	}
 
 	reachabilityPassed := true
+	warned := 0 // tracks non-fatal health warnings (e.g. "starting" state)
 	for svcName := range e.Compose.Services {
 		select {
 		case <-ctx.Done():
@@ -356,7 +357,22 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 
 		if inspect.Container.State != nil && inspect.Container.State.Health != nil {
 			healthStatus := string(inspect.Container.State.Health.Status)
-			if healthStatus != "healthy" {
+			switch healthStatus {
+			case "healthy":
+				// All good — no result entry needed.
+			case "starting":
+				// The container is running but the health check has not completed its
+				// first probe yet. This is expected immediately after startup and is
+				// not an actionable failure.
+				warned++
+				results = append(results, output.CheckResult{
+					Group:      "Network & Port Availability",
+					Name:       fmt.Sprintf("Service %s health is starting", svcName),
+					Status:     output.CheckWarning,
+					Error:      fmt.Sprintf("Container for service %s is running but health check is still initialising", svcName),
+					Mitigation: fmt.Sprintf("Wait a few seconds, then re-run halo check. To inspect: docker inspect --format='{{json .State.Health}}' %s", matchedContainer.ID),
+				})
+			default:
 				reachabilityPassed = false
 				results = append(results, output.CheckResult{
 					Group:      "Network & Port Availability",
