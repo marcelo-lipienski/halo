@@ -36,6 +36,7 @@ var (
 	verbose      bool
 	fix          bool
 	quiet        bool
+	dryRun       bool
 )
 
 func main() {
@@ -57,6 +58,7 @@ func main() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enables debug logging")
 	rootCmd.PersistentFlags().BoolVar(&fix, "fix", false, "Automatically attempt to mitigate file permission and missing directory issues")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppresses all standard output")
+	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Preview changes when running with --fix without modifying the filesystem")
 
 	// check subcommand
 	checkCmd := &cobra.Command{
@@ -204,6 +206,7 @@ func runCheck() {
 	engineConfigDir := filepath.Dir(filesToLoad[0])
 	engine := diagnostics.NewEngine(engineConfigDir, filesToLoad[0], env, mergedComp, dockerCli)
 	engine.AutoFix = fix
+	engine.DryRun = dryRun
 	report := engine.Run(ctx)
 
 	if !quiet {
