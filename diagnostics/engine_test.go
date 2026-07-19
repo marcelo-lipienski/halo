@@ -727,8 +727,8 @@ services:
 		}
 	}
 
-	// Note: root user running tests might ignore permissions, so we check if the test is running as root
-	if os.Getuid() != 0 {
+	// Note: root user running tests might ignore permissions, and Windows does not support POSIX chmod directories
+	if runtime.GOOS != "windows" && os.Getuid() != 0 {
 		if !foundReadLockout {
 			t.Error("expected to find volume read lockout error for writeonly_dir")
 		}
@@ -811,7 +811,7 @@ services:
 		t.Error("expected write permission check to be skipped for read-only volume, but it failed")
 	}
 
-	if report.Status == output.StatusEnvironmentBroken && os.Getuid() != 0 {
+	if report.Status == output.StatusEnvironmentBroken && runtime.GOOS != "windows" && os.Getuid() != 0 {
 		t.Errorf("expected engine status healthy, got environment_broken: %+v", report)
 	}
 }
