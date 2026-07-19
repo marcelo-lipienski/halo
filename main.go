@@ -186,7 +186,7 @@ func runCheck() {
 	// Merge all parsed configs according to docker-compose overrides rules
 	mergedComp := config.MergeComposeConfigs(parsedConfigs...)
 
-	dockerCli, err := client.New(client.FromEnv, client.WithAPIVersionNegotiation())
+	dockerCli, err := client.New(client.FromEnv)
 	if err != nil {
 		exitWithSystemFailure(format, verbose, fmt.Sprintf("Failed to create Docker client: %v", err), "Verify your Docker environment variables are set correctly.")
 	}
