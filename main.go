@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,6 +34,7 @@ var (
 	composeFiles []string
 	format       string
 	verbose      bool
+	fix          bool
 )
 
 func main() {
@@ -52,6 +54,7 @@ func main() {
 	rootCmd.PersistentFlags().StringSliceVar(&composeFiles, "compose-file", []string{}, "Explicit path(s) to the docker-compose.yml file (can specify multiple times)")
 	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "text", "Output format for results (text|json)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enables debug logging")
+	rootCmd.PersistentFlags().BoolVar(&fix, "fix", false, "Automatically attempt to mitigate file permission and missing directory issues")
 
 	// check subcommand
 	checkCmd := &cobra.Command{
@@ -139,17 +142,30 @@ func runCheck() {
 		exitWithSystemFailure(format, errStr, mitigationStr)
 	}
 
-	env, err := config.ParseEnv(envPath)
-	if err != nil {
-		exitWithSystemFailure(format, fmt.Sprintf("Failed to parse .env file: %v", err), "Check .env format for syntax errors.")
+	var parseErrs []error
+	env, envErr := config.ParseEnv(envPath)
+	if envErr != nil {
+		parseErrs = append(parseErrs, fmt.Errorf("failed to parse .env file: %w", envErr))
 	}
 
 	for _, file := range filesToLoad {
 		comp, err := config.ParseCompose(file)
 		if err != nil {
-			exitWithSystemFailure(format, fmt.Sprintf("Failed to parse docker-compose file (%s): %v", filepath.Base(file), err), fmt.Sprintf("Verify %s syntax is valid YAML.", filepath.Base(file)))
+			parseErrs = append(parseErrs, fmt.Errorf("failed to parse docker-compose file (%s): %w", filepath.Base(file), err))
+		} else {
+			parsedConfigs = append(parsedConfigs, comp)
 		}
-		parsedConfigs = append(parsedConfigs, comp)
+	}
+
+	if len(parseErrs) > 0 {
+		joinedErr := errors.Join(parseErrs...)
+		var mitigation string
+		if len(parseErrs) > 1 {
+			mitigation = "Check the syntax and format of the reported configuration files."
+		} else {
+			mitigation = "Verify file syntax is valid."
+		}
+		exitWithSystemFailure(format, joinedErr.Error(), mitigation)
 	}
 
 	// Merge all parsed configs according to docker-compose overrides rules
@@ -170,6 +186,7 @@ func runCheck() {
 
 	engineConfigDir := filepath.Dir(filesToLoad[0])
 	engine := diagnostics.NewEngine(engineConfigDir, filesToLoad[0], env, mergedComp, dockerCli)
+	engine.AutoFix = fix
 	report := engine.Run(ctx)
 
 	if format == "json" {

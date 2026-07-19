@@ -22,8 +22,18 @@ func (e *Engine) extractReferencedEnvVars() []envVarRef {
 	seen := make(map[string]bool)
 
 	parseStr := func(s string) {
-		matches := envVarRegex.FindAllStringSubmatch(s, -1)
-		for _, match := range matches {
+		matches := envVarRegex.FindAllStringSubmatchIndex(s, -1)
+		for _, matchIdx := range matches {
+			start := matchIdx[0]
+			if start > 0 && s[start-1] == '$' {
+				// Escaped, skip
+				continue
+			}
+			match := envVarRegex.FindStringSubmatch(s[start:matchIdx[1]])
+			if len(match) == 0 {
+				continue
+			}
+
 			varName := ""
 			hasDefault := false
 			if len(match) > 1 && match[1] != "" {
@@ -87,6 +97,17 @@ func (e *Engine) extractReferencedEnvVars() []envVarRef {
 func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.CheckResult {
 	var results []output.CheckResult
 
+	if err := ctx.Err(); err != nil {
+		results = append(results, output.CheckResult{
+			Group:      "Environmental Alignment",
+			Name:       "Check Timeout",
+			Status:     output.CheckFailed,
+			Error:      fmt.Sprintf("Environmental alignment check was cancelled: %v", err),
+			Mitigation: "Verify local performance and resource allocation.",
+		})
+		return results
+	}
+
 	refs := e.extractReferencedEnvVars()
 
 	variablesCheckPassed := true
@@ -95,6 +116,13 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 	for _, ref := range refs {
 		select {
 		case <-ctx.Done():
+			results = append(results, output.CheckResult{
+				Group:      "Environmental Alignment",
+				Name:       "Check Timeout",
+				Status:     output.CheckFailed,
+				Error:      "Environmental alignment check timed out",
+				Mitigation: "Verify local performance and resource allocation.",
+			})
 			return results
 		default:
 		}

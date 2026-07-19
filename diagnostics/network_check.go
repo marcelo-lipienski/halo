@@ -113,6 +113,12 @@ func checkSinglePortCollision(hostPort string, proto string) bool {
 			return true
 		}
 		l.Close()
+
+		l2, err2 := net.ListenPacket("udp", "0.0.0.0:"+hostPort)
+		if err2 != nil {
+			return true
+		}
+		l2.Close()
 		return false
 	}
 	l, err := net.Listen("tcp", "127.0.0.1:"+hostPort)
@@ -120,6 +126,12 @@ func checkSinglePortCollision(hostPort string, proto string) bool {
 		return true
 	}
 	l.Close()
+
+	l2, err2 := net.Listen("tcp", "0.0.0.0:"+hostPort)
+	if err2 != nil {
+		return true
+	}
+	l2.Close()
 	return false
 }
 
@@ -140,6 +152,17 @@ func isPortBoundBySelf(port int, proto string, containers []container.Summary, p
 
 func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	var results []output.CheckResult
+
+	if err := ctx.Err(); err != nil {
+		results = append(results, output.CheckResult{
+			Group:      "Network & Port Availability",
+			Name:       "Check Timeout",
+			Status:     output.CheckFailed,
+			Error:      fmt.Sprintf("Network check was cancelled: %v", err),
+			Mitigation: "Verify local Docker daemon performance and resources.",
+		})
+		return results
+	}
 
 	projectName := ""
 	if envProj := os.Getenv("COMPOSE_PROJECT_NAME"); envProj != "" {
@@ -169,6 +192,13 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	for svcName, svc := range e.Compose.Services {
 		select {
 		case <-ctx.Done():
+			results = append(results, output.CheckResult{
+				Group:      "Network & Port Availability",
+				Name:       "Check Timeout",
+				Status:     output.CheckFailed,
+				Error:      "Network and port collision check timed out",
+				Mitigation: "Verify local Docker daemon performance and resources.",
+			})
 			return results
 		default:
 		}
@@ -257,6 +287,13 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	for svcName := range e.Compose.Services {
 		select {
 		case <-ctx.Done():
+			results = append(results, output.CheckResult{
+				Group:      "Network & Port Availability",
+				Name:       "Check Timeout",
+				Status:     output.CheckFailed,
+				Error:      "Service reachability check timed out",
+				Mitigation: "Verify local Docker daemon performance and resources.",
+			})
 			return results
 		default:
 		}
