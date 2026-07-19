@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/moby/moby/client"
 	"github.com/marcelo-lipienski/halo/config"
 	"github.com/marcelo-lipienski/halo/output"
+	"github.com/moby/moby/client"
 )
 
 // Engine runs the diagnostic suites

@@ -42,7 +42,7 @@ When `halo check` is executed, the engine must execute the following sequential 
 * Map out defined services, their expected environment mappings, exposed/internal ports, and mounted storage volumes.
 
 ### Phase 3: Concurrent Diagnostic Execution
-The suite must run individual check groups concurrently using a managed goroutine pool. Each check group receives a scoped context timeout of 2 seconds.
+The suite must run individual check groups concurrently using lightweight, native goroutines with synchronized error/result aggregation. Each check group receives a scoped context timeout of 2 seconds.
 
 #### Check Group A: Environmental Alignment
 * **Variables Check:** Ensure every environment variable referenced in `docker-compose.yml` (e.g., `${DB_PASSWORD}`) is explicitly defined in the local `.env` file.
@@ -50,7 +50,7 @@ The suite must run individual check groups concurrently using a managed goroutin
 
 #### Check Group B: Network & Port Availability
 * **Port Collision Check:** Scan the local host system to ensure target host ports mapped in `docker-compose.yml` are not already occupied by native host processes or dangling legacy containers.
-* **Service Reachability:** Attempt defensive socket pings against active containers to verify internal inter-container communication paths are clear.
+* **Service Reachability:** Verify container running states and health check statuses via the Docker engine API to confirm active services are initialized and functional (avoiding false-positive socket failures caused by host firewalls or VPN routings).
 
 #### Check Group C: Volume & File Permissions
 * **Mount Validation:** Identify all host paths mounted into containers as volumes.
