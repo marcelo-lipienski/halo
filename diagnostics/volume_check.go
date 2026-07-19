@@ -2,7 +2,9 @@ package diagnostics
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -25,7 +27,7 @@ func isReadable(path string) (bool, error) {
 		}
 		defer f.Close()
 		_, err = f.Readdirnames(1)
-		if err != nil && err.Error() != "EOF" {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return false, err
 		}
 		return true, nil
@@ -64,6 +66,92 @@ func isWritable(path string) (bool, error) {
 	}
 	f.Close()
 	return true, nil
+}
+
+// checkReadPermission verifies read access on hostPath and optionally auto-fixes it.
+// It appends result entries to results and returns the updated slice.
+func (e *Engine) checkReadPermission(results []output.CheckResult, hostPath, volSource, svcName string, info os.FileInfo) ([]output.CheckResult, bool) {
+	readable, rErr := isReadable(hostPath)
+	if readable && rErr == nil {
+		return results, true
+	}
+
+	if e.AutoFix {
+		mode := os.FileMode(0755)
+		if !info.IsDir() {
+			mode = 0644
+		}
+		if chmodErr := os.Chmod(hostPath, mode); chmodErr == nil {
+			if r, _ := isReadable(hostPath); r {
+				results = append(results, output.CheckResult{
+					Group:  "Volume & File Permissions",
+					Name:   fmt.Sprintf("Volume read lockout auto-fixed: %s", volSource),
+					Status: output.CheckPassed,
+				})
+				return results, true
+			}
+		}
+	}
+
+	pathType := "Directory"
+	if !info.IsDir() {
+		pathType = "File"
+	}
+	errStr := fmt.Sprintf("%s '%s' for service %s is not readable by current host user.", pathType, hostPath, svcName)
+	if rErr != nil {
+		errStr = fmt.Sprintf("%s '%s' for service %s is not readable by current host user. System error: %v", pathType, hostPath, svcName, rErr)
+	}
+	results = append(results, output.CheckResult{
+		Group:      "Volume & File Permissions",
+		Name:       fmt.Sprintf("Volume read lockout: %s", volSource),
+		Status:     output.CheckFailed,
+		Error:      errStr,
+		Mitigation: fmt.Sprintf("Run: chmod -R u+r %s or sudo chown -R $USER %s", hostPath, hostPath),
+	})
+	return results, false
+}
+
+// checkWritePermission verifies write access on hostPath and optionally auto-fixes it.
+// It appends result entries to results and returns the updated slice.
+func (e *Engine) checkWritePermission(results []output.CheckResult, hostPath, volSource, svcName string, info os.FileInfo) []output.CheckResult {
+	writable, wErr := isWritable(hostPath)
+	if writable && wErr == nil {
+		return results
+	}
+
+	if e.AutoFix {
+		mode := os.FileMode(0755)
+		if !info.IsDir() {
+			mode = 0644
+		}
+		if chmodErr := os.Chmod(hostPath, mode); chmodErr == nil {
+			if w, _ := isWritable(hostPath); w {
+				results = append(results, output.CheckResult{
+					Group:  "Volume & File Permissions",
+					Name:   fmt.Sprintf("Volume write lockout auto-fixed: %s", volSource),
+					Status: output.CheckPassed,
+				})
+				return results
+			}
+		}
+	}
+
+	pathType := "Directory"
+	if !info.IsDir() {
+		pathType = "File"
+	}
+	errStr := fmt.Sprintf("%s '%s' for service %s is not writable by current host user.", pathType, hostPath, svcName)
+	if wErr != nil {
+		errStr = fmt.Sprintf("%s '%s' for service %s is not writable by current host user. System error: %v", pathType, hostPath, svcName, wErr)
+	}
+	results = append(results, output.CheckResult{
+		Group:      "Volume & File Permissions",
+		Name:       fmt.Sprintf("Volume permission lockout: %s", volSource),
+		Status:     output.CheckFailed,
+		Error:      errStr,
+		Mitigation: fmt.Sprintf("Run: chmod -R u+rw %s or sudo chown -R $USER %s", hostPath, hostPath),
+	})
+	return results
 }
 
 func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckResult {
@@ -156,7 +244,6 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 			info, err := os.Stat(hostPath)
 			if os.IsNotExist(err) {
 				if e.AutoFix {
-					// Check if the source is likely a file
 					base := filepath.Base(hostPath)
 					ext := filepath.Ext(hostPath)
 					isLikelyFile := ext != "" || base == ".env" || base == ".gitignore" || base == "Dockerfile"
@@ -169,22 +256,26 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 						fixErr = os.MkdirAll(hostPath, 0775)
 					}
 					if fixErr == nil {
-						// Auto-fixed, check again
-						info, err = os.Stat(hostPath)
-						if err == nil {
+						if info, err = os.Stat(hostPath); err == nil {
 							results = append(results, output.CheckResult{
 								Group:  "Volume & File Permissions",
 								Name:   fmt.Sprintf("Volume source auto-fixed: %s", vol.Source),
 								Status: output.CheckPassed,
 							})
-							goto checkRead
+							var readable bool
+							results, readable = e.checkReadPermission(results, hostPath, vol.Source, svcName, info)
+							if readable && !vol.ReadOnly {
+								results = e.checkWritePermission(results, hostPath, vol.Source, svcName, info)
+							} else if !readable {
+								volumeCheckPassed = false
+							}
+							continue
 						}
 					}
 				}
 
 				volumeCheckPassed = false
 
-				// Check if the source is likely a file
 				base := filepath.Base(hostPath)
 				ext := filepath.Ext(hostPath)
 				isLikelyFile := ext != "" || base == ".env" || base == ".gitignore" || base == "Dockerfile"
@@ -214,86 +305,17 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				continue
 			}
 
-		checkRead:
-			readable, rErr := isReadable(hostPath)
-			if !readable || rErr != nil {
-				if e.AutoFix {
-					var chmodErr error
-					if info.IsDir() {
-						chmodErr = os.Chmod(hostPath, 0755)
-					} else {
-						chmodErr = os.Chmod(hostPath, 0644)
-					}
-					if chmodErr == nil {
-						if r, _ := isReadable(hostPath); r {
-							results = append(results, output.CheckResult{
-								Group:  "Volume & File Permissions",
-								Name:   fmt.Sprintf("Volume read lockout auto-fixed: %s", vol.Source),
-								Status: output.CheckPassed,
-							})
-							goto checkWrite
-						}
-					}
-				}
-
+			var readable bool
+			results, readable = e.checkReadPermission(results, hostPath, vol.Source, svcName, info)
+			if !readable {
 				volumeCheckPassed = false
-				pathType := "Directory"
-				if !info.IsDir() {
-					pathType = "File"
-				}
-				errStr := fmt.Sprintf("%s '%s' for service %s is not readable by current host user.", pathType, hostPath, svcName)
-				if rErr != nil {
-					errStr = fmt.Sprintf("%s '%s' for service %s is not readable by current host user. System error: %v", pathType, hostPath, svcName, rErr)
-				}
-				results = append(results, output.CheckResult{
-					Group:      "Volume & File Permissions",
-					Name:       fmt.Sprintf("Volume read lockout: %s", vol.Source),
-					Status:     output.CheckFailed,
-					Error:      errStr,
-					Mitigation: fmt.Sprintf("Run: chmod -R u+r %s or sudo chown -R $USER %s", hostPath, hostPath),
-				})
 			}
-
-		checkWrite:
-			// Only validate write permissions if the volume is NOT read-only
-			if !vol.ReadOnly {
-				writable, wErr := isWritable(hostPath)
-				if !writable || wErr != nil {
-					if e.AutoFix {
-						var chmodErr error
-						if info.IsDir() {
-							chmodErr = os.Chmod(hostPath, 0755)
-						} else {
-							chmodErr = os.Chmod(hostPath, 0644)
-						}
-						if chmodErr == nil {
-							if w, _ := isWritable(hostPath); w {
-								results = append(results, output.CheckResult{
-									Group:  "Volume & File Permissions",
-									Name:   fmt.Sprintf("Volume write lockout auto-fixed: %s", vol.Source),
-									Status: output.CheckPassed,
-								})
-								continue
-							}
-						}
-					}
-
+			if readable && !vol.ReadOnly {
+				before := len(results)
+				results = e.checkWritePermission(results, hostPath, vol.Source, svcName, info)
+				if len(results) > before {
+					// A failure was appended
 					volumeCheckPassed = false
-					pathType := "Directory"
-					if !info.IsDir() {
-						pathType = "File"
-					}
-					errStr := fmt.Sprintf("%s '%s' for service %s is not writable by current host user.", pathType, hostPath, svcName)
-					if wErr != nil {
-						errStr = fmt.Sprintf("%s '%s' for service %s is not writable by current host user. System error: %v", pathType, hostPath, svcName, wErr)
-					}
-					results = append(results, output.CheckResult{
-						Group:      "Volume & File Permissions",
-						Name:       fmt.Sprintf("Volume permission lockout: %s", vol.Source),
-						Status:     output.CheckFailed,
-						Error:      errStr,
-						Mitigation: fmt.Sprintf("Run: chmod -R u+rw %s or sudo chown -R $USER %s", hostPath, hostPath),
-					})
 				}
 			}
 		}

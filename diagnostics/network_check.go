@@ -82,29 +82,7 @@ func parseHostPortProto(p string) (string, string) {
 	}
 }
 
-func checkPortCollision(hostPortRange string, proto string) bool {
-	parts := strings.Split(hostPortRange, "-")
-	if len(parts) == 1 {
-		return checkSinglePortCollision(hostPortRange, proto)
-	}
-	if len(parts) == 2 {
-		start, err1 := strconv.Atoi(parts[0])
-		end, err2 := strconv.Atoi(parts[1])
-		if err1 != nil || err2 != nil {
-			return checkSinglePortCollision(hostPortRange, proto)
-		}
-		if start > end {
-			start, end = end, start
-		}
-		for p := start; p <= end; p++ {
-			if checkSinglePortCollision(strconv.Itoa(p), proto) {
-				return true
-			}
-		}
-		return false
-	}
-	return checkSinglePortCollision(hostPortRange, proto)
-}
+
 
 func checkSinglePortCollision(hostPort string, proto string) bool {
 	if proto == "udp" {
@@ -315,7 +293,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 				Name:       fmt.Sprintf("Service %s unreachable", svcName),
 				Status:     output.CheckFailed,
 				Error:      fmt.Sprintf("No container found for service %s in project %s", svcName, projectName),
-				Mitigation: fmt.Sprintf("Run: docker-compose up -d %s", svcName),
+				Mitigation: fmt.Sprintf("Run: docker compose up -d %s", svcName),
 			})
 			continue
 		}
@@ -329,7 +307,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 					Name:       fmt.Sprintf("Service %s is %s", svcName, matchedContainer.State),
 					Status:     output.CheckFailed,
 					Error:      fmt.Sprintf("Container for service %s is in state '%s' instead of 'running' (inspect failed)", svcName, matchedContainer.State),
-					Mitigation: fmt.Sprintf("Run: docker-compose start %s or check logs: docker-compose logs %s", svcName, svcName),
+					Mitigation: fmt.Sprintf("Run: docker compose start %s or check logs: docker compose logs %s", svcName, svcName),
 				})
 			}
 			continue
@@ -349,7 +327,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 						Name:       fmt.Sprintf("Service %s failed to start", svcName),
 						Status:     output.CheckFailed,
 						Error:      fmt.Sprintf("Container failed to start due to host port collision. Docker error: %s", startError),
-						Mitigation: fmt.Sprintf("Stop the process occupying the port or change the host port mapping, then restart the service: docker-compose up -d %s", svcName),
+						Mitigation: fmt.Sprintf("Stop the process occupying the port or change the host port mapping, then restart the service: docker compose up -d %s", svcName),
 					})
 				} else {
 					results = append(results, output.CheckResult{
@@ -357,7 +335,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 						Name:       fmt.Sprintf("Service %s failed to start", svcName),
 						Status:     output.CheckFailed,
 						Error:      fmt.Sprintf("Container failed to start due to a previous port collision, but the port is now available. Docker error: %s", startError),
-						Mitigation: fmt.Sprintf("Simply restart the service: docker-compose up -d %s", svcName),
+						Mitigation: fmt.Sprintf("Simply restart the service: docker compose up -d %s", svcName),
 					})
 				}
 			} else {
@@ -370,7 +348,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 					Name:       fmt.Sprintf("Service %s is %s", svcName, stateStr),
 					Status:     output.CheckFailed,
 					Error:      fmt.Sprintf("Container for service %s is in state '%s' instead of 'running'", svcName, stateStr),
-					Mitigation: fmt.Sprintf("Run: docker-compose start %s or check logs: docker-compose logs %s", svcName, svcName),
+					Mitigation: fmt.Sprintf("Run: docker compose start %s or check logs: docker compose logs %s", svcName, svcName),
 				})
 			}
 			continue

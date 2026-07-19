@@ -51,7 +51,7 @@ func main() {
 	// Define persistent flags
 	rootCmd.PersistentFlags().StringVarP(&configDir, "config-dir", "c", ".", "Path to the directory containing local configuration files")
 	rootCmd.PersistentFlags().StringVarP(&envFile, "env-file", "e", "", "Explicit path to the .env file")
-	rootCmd.PersistentFlags().StringSliceVar(&composeFiles, "compose-file", []string{}, "Explicit path(s) to the docker-compose.yml file (can specify multiple times)")
+	rootCmd.PersistentFlags().StringArrayVar(&composeFiles, "compose-file", []string{}, "Explicit path(s) to the docker-compose.yml file (can specify multiple times)")
 	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "text", "Output format for results (text|json)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enables debug logging")
 	rootCmd.PersistentFlags().BoolVar(&fix, "fix", false, "Automatically attempt to mitigate file permission and missing directory issues")
@@ -102,12 +102,13 @@ func runCheck() {
 	if len(composeFiles) > 0 {
 		filesToLoad = composeFiles
 	} else {
-		// Automatic detection: check docker-compose.yml or docker-compose.yaml
+		// Automatic detection: prefer docker-compose.yml, fall back to docker-compose.yaml
+		// (matches Docker Compose's own precedence behaviour)
 		composePathYml := filepath.Join(configDir, "docker-compose.yml")
 		composePathYaml := filepath.Join(configDir, "docker-compose.yaml")
-		composePath := composePathYml
-		if _, err := os.Stat(composePathYaml); err == nil {
-			composePath = composePathYaml
+		composePath := composePathYaml
+		if _, err := os.Stat(composePathYml); err == nil {
+			composePath = composePathYml
 		}
 		filesToLoad = append(filesToLoad, composePath)
 
@@ -139,7 +140,7 @@ func runCheck() {
 	if len(missing) > 0 {
 		errStr := fmt.Sprintf("Missing configuration files: %s must exist.", strings.Join(missing, " and "))
 		mitigationStr := fmt.Sprintf("Ensure your .env file and all specified docker-compose files are present at their specified paths.")
-		exitWithSystemFailure(format, errStr, mitigationStr)
+		exitWithSystemFailure(format, verbose, errStr, mitigationStr)
 	}
 
 	var parseErrs []error
@@ -165,7 +166,7 @@ func runCheck() {
 		} else {
 			mitigation = "Verify file syntax is valid."
 		}
-		exitWithSystemFailure(format, joinedErr.Error(), mitigation)
+		exitWithSystemFailure(format, verbose, joinedErr.Error(), mitigation)
 	}
 
 	// Merge all parsed configs according to docker-compose overrides rules
@@ -173,7 +174,7 @@ func runCheck() {
 
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		exitWithSystemFailure(format, fmt.Sprintf("Failed to create Docker client: %v", err), "Verify your Docker environment variables are set correctly.")
+		exitWithSystemFailure(format, verbose, fmt.Sprintf("Failed to create Docker client: %v", err), "Verify your Docker environment variables are set correctly.")
 	}
 	defer dockerCli.Close()
 
@@ -181,7 +182,7 @@ func runCheck() {
 	defer pingCancel()
 	_, err = dockerCli.Ping(pingCtx, client.PingOptions{})
 	if err != nil {
-		exitWithSystemFailure(format, fmt.Sprintf("Docker daemon is unreachable: %v", err), "Ensure Docker daemon/service is running and socket is accessible.")
+		exitWithSystemFailure(format, verbose, fmt.Sprintf("Docker daemon is unreachable: %v", err), "Ensure Docker daemon/service is running and socket is accessible.")
 	}
 
 	engineConfigDir := filepath.Dir(filesToLoad[0])
@@ -201,7 +202,7 @@ func runCheck() {
 	os.Exit(0)
 }
 
-func exitWithSystemFailure(format, errStr, mitigationStr string) {
+func exitWithSystemFailure(format string, verbose bool, errStr, mitigationStr string) {
 	report := &output.DiagnosticsReport{
 		Status:     output.StatusSystemFailure,
 		DurationMs: 0,
@@ -218,7 +219,7 @@ func exitWithSystemFailure(format, errStr, mitigationStr string) {
 	if format == "json" {
 		output.RenderJSON(os.Stdout, report)
 	} else {
-		output.RenderText(os.Stdout, report, true)
+		output.RenderText(os.Stdout, report, verbose)
 	}
 	os.Exit(1)
 }

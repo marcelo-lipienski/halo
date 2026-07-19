@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strings"
 
 	"github.com/marcelo-lipienski/halo/output"
 )
@@ -38,8 +37,9 @@ func (e *Engine) extractReferencedEnvVars() []envVarRef {
 			hasDefault := false
 			if len(match) > 1 && match[1] != "" {
 				varName = match[1]
-				fullMatch := match[0]
-				if strings.HasPrefix(fullMatch, "${") && strings.Contains(fullMatch, "-") {
+				// Capture group 2 holds the default value portion (e.g. "80" in ${PORT:-80}).
+				// A non-empty capture group 2 means a default was explicitly declared.
+				if len(match) > 2 && match[2] != "" {
 					hasDefault = true
 				}
 			} else if len(match) > 3 && match[3] != "" {

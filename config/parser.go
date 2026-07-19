@@ -340,14 +340,17 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 			// Ports: append lists
 			destSvc.Ports = append(destSvc.Ports, srcSvc.Ports...)
 
-			// Volumes: latter overrides former if container target path is the same
+			// Volumes: latter overrides former if container target path is the same.
+			// Anonymous volumes (empty Target) are always appended without de-duplication.
 			srcTargets := make(map[string]bool)
 			for _, v := range srcSvc.Volumes {
-				srcTargets[v.Target] = true
+				if v.Target != "" {
+					srcTargets[v.Target] = true
+				}
 			}
 			var mergedVols []ComposeVolume
 			for _, v := range destSvc.Volumes {
-				if !srcTargets[v.Target] {
+				if v.Target == "" || !srcTargets[v.Target] {
 					mergedVols = append(mergedVols, v)
 				}
 			}
