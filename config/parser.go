@@ -280,8 +280,18 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 			// Ports: append lists
 			destSvc.Ports = append(destSvc.Ports, srcSvc.Ports...)
 
-			// Volumes: append lists
-			destSvc.Volumes = append(destSvc.Volumes, srcSvc.Volumes...)
+			// Volumes: latter overrides former if container target path is the same
+			srcTargets := make(map[string]bool)
+			for _, v := range srcSvc.Volumes {
+				srcTargets[v.Target] = true
+			}
+			var mergedVols []ComposeVolume
+			for _, v := range destSvc.Volumes {
+				if !srcTargets[v.Target] {
+					mergedVols = append(mergedVols, v)
+				}
+			}
+			destSvc.Volumes = append(mergedVols, srcSvc.Volumes...)
 
 			merged.Services[svcName] = destSvc
 		}

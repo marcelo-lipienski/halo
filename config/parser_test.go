@@ -364,3 +364,43 @@ func TestMergeComposeConfigs(t *testing.T) {
 	}
 }
 
+func TestMergeComposeConfigsOverlappingVolumes(t *testing.T) {
+	cfg1 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				Volumes: []ComposeVolume{
+					{Source: "./data-old", Target: "/data", Type: "bind"},
+					{Source: "./other", Target: "/other", Type: "bind"},
+				},
+			},
+		},
+	}
+
+	cfg2 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				Volumes: []ComposeVolume{
+					{Source: "./data-new", Target: "/data", Type: "bind"},
+				},
+			},
+		},
+	}
+
+	merged := MergeComposeConfigs(cfg1, cfg2)
+	web := merged.Services["web"]
+
+	if len(web.Volumes) != 2 {
+		t.Fatalf("expected 2 volumes, got %d", len(web.Volumes))
+	}
+
+	// First volume should be "./other" -> "/other"
+	if web.Volumes[0].Source != "./other" || web.Volumes[0].Target != "/other" {
+		t.Errorf("expected first volume to be ./other, got %+v", web.Volumes[0])
+	}
+
+	// Second volume should be "./data-new" -> "/data" (overridden)
+	if web.Volumes[1].Source != "./data-new" || web.Volumes[1].Target != "/data" {
+		t.Errorf("expected second volume to be ./data-new, got %+v", web.Volumes[1])
+	}
+}
+
