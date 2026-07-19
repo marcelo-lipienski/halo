@@ -37,7 +37,7 @@ Download and install the latest release via Go:
 go install github.com/marcelo-lipienski/halo@latest
 ```
 
-> **Note:** halo requires Go 1.26 or later. Go 1.26 is currently a pre-release version.
+> **Note:** halo requires Go 1.26 or later.
 
 ## Usage
 
