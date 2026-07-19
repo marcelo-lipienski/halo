@@ -123,23 +123,37 @@ func runCheck() {
 	}
 
 	// Stat check for all configuration files
-	_, envStatErr := os.Stat(envPath)
 	var missing []string
-	if os.IsNotExist(envStatErr) {
-		missing = append(missing, filepath.Base(envPath))
+	var accessErrors []string
+
+	if _, err := os.Stat(envPath); err != nil {
+		if os.IsNotExist(err) {
+			missing = append(missing, filepath.Base(envPath))
+		} else {
+			accessErrors = append(accessErrors, fmt.Sprintf("%s (%v)", filepath.Base(envPath), err))
+		}
 	}
 
 	var parsedConfigs []*config.ComposeConfig
 	for _, file := range filesToLoad {
-		_, err := os.Stat(file)
-		if os.IsNotExist(err) {
-			missing = append(missing, filepath.Base(file))
+		if _, err := os.Stat(file); err != nil {
+			if os.IsNotExist(err) {
+				missing = append(missing, filepath.Base(file))
+			} else {
+				accessErrors = append(accessErrors, fmt.Sprintf("%s (%v)", filepath.Base(file), err))
+			}
 		}
 	}
 
 	if len(missing) > 0 {
 		errStr := fmt.Sprintf("Missing configuration files: %s must exist.", strings.Join(missing, " and "))
-		mitigationStr := fmt.Sprintf("Ensure your .env file and all specified docker-compose files are present at their specified paths.")
+		mitigationStr := "Ensure your .env file and all specified docker-compose files are present at their specified paths."
+		exitWithSystemFailure(format, verbose, errStr, mitigationStr)
+	}
+
+	if len(accessErrors) > 0 {
+		errStr := fmt.Sprintf("Unable to access configuration files: %s.", strings.Join(accessErrors, " and "))
+		mitigationStr := "Check file permissions and user privileges for the reported configuration files."
 		exitWithSystemFailure(format, verbose, errStr, mitigationStr)
 	}
 
