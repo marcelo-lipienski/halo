@@ -100,6 +100,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	}
 
 	// 1. Port Collision Check
+	servicesWithCollisions := make(map[string]bool)
 	portCollisionPassed := true
 	for svcName, svc := range e.Compose.Services {
 		for _, rawPort := range svc.Ports {
@@ -135,6 +136,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 			}
 
 			if checkPortCollision(hostPort, proto) {
+				servicesWithCollisions[svcName] = true
 				portCollisionPassed = false
 				results = append(results, output.CheckResult{
 					Group:      "Network & Port Availability",
@@ -225,13 +227,23 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 			}
 
 			if isPortBindError(startError) {
-				results = append(results, output.CheckResult{
-					Group:      "Network & Port Availability",
-					Name:       fmt.Sprintf("Service %s failed to start", svcName),
-					Status:     output.CheckFailed,
-					Error:      fmt.Sprintf("Container failed to start due to host port collision. Docker error: %s", startError),
-					Mitigation: fmt.Sprintf("Stop the process occupying the port or change the host port mapping, then restart the service: docker-compose up -d %s", svcName),
-				})
+				if servicesWithCollisions[svcName] {
+					results = append(results, output.CheckResult{
+						Group:      "Network & Port Availability",
+						Name:       fmt.Sprintf("Service %s failed to start", svcName),
+						Status:     output.CheckFailed,
+						Error:      fmt.Sprintf("Container failed to start due to host port collision. Docker error: %s", startError),
+						Mitigation: fmt.Sprintf("Stop the process occupying the port or change the host port mapping, then restart the service: docker-compose up -d %s", svcName),
+					})
+				} else {
+					results = append(results, output.CheckResult{
+						Group:      "Network & Port Availability",
+						Name:       fmt.Sprintf("Service %s failed to start", svcName),
+						Status:     output.CheckFailed,
+						Error:      fmt.Sprintf("Container failed to start due to a previous port collision, but the port is now available. Docker error: %s", startError),
+						Mitigation: fmt.Sprintf("Simply restart the service: docker-compose up -d %s", svcName),
+					})
+				}
 			} else {
 				stateStr := string(matchedContainer.State)
 				if inspect.Container.State != nil {
