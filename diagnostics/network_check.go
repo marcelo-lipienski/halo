@@ -202,21 +202,53 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 			continue
 		}
 
-		if matchedContainer.State != "running" {
-			reachabilityPassed = false
-			results = append(results, output.CheckResult{
-				Group:      "Network & Port Availability",
-				Name:       fmt.Sprintf("Service %s is %s", svcName, matchedContainer.State),
-				Status:     output.CheckFailed,
-				Error:      fmt.Sprintf("Container for service %s is in state '%s' instead of 'running'", svcName, matchedContainer.State),
-				Mitigation: fmt.Sprintf("Run: docker-compose start %s or check logs: docker-compose logs %s", svcName, svcName),
-			})
+		inspect, err := e.DockerCli.ContainerInspect(ctx, matchedContainer.ID, client.ContainerInspectOptions{})
+		if err != nil {
+			if matchedContainer.State != "running" {
+				reachabilityPassed = false
+				results = append(results, output.CheckResult{
+					Group:      "Network & Port Availability",
+					Name:       fmt.Sprintf("Service %s is %s", svcName, matchedContainer.State),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("Container for service %s is in state '%s' instead of 'running' (inspect failed)", svcName, matchedContainer.State),
+					Mitigation: fmt.Sprintf("Run: docker-compose start %s or check logs: docker-compose logs %s", svcName, svcName),
+				})
+			}
 			continue
 		}
 
-		// Inspect to check health status if configured
-		inspect, err := e.DockerCli.ContainerInspect(ctx, matchedContainer.ID, client.ContainerInspectOptions{})
-		if err == nil && inspect.Container.State != nil && inspect.Container.State.Health != nil {
+		if inspect.Container.State == nil || !inspect.Container.State.Running {
+			reachabilityPassed = false
+			startError := ""
+			if inspect.Container.State != nil {
+				startError = inspect.Container.State.Error
+			}
+
+			if isPortBindError(startError) {
+				results = append(results, output.CheckResult{
+					Group:      "Network & Port Availability",
+					Name:       fmt.Sprintf("Service %s failed to start", svcName),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("Container failed to start due to host port collision. Docker error: %s", startError),
+					Mitigation: fmt.Sprintf("Stop the process occupying the port or change the host port mapping, then restart the service: docker-compose up -d %s", svcName),
+				})
+			} else {
+				stateStr := string(matchedContainer.State)
+				if inspect.Container.State != nil {
+					stateStr = string(inspect.Container.State.Status)
+				}
+				results = append(results, output.CheckResult{
+					Group:      "Network & Port Availability",
+					Name:       fmt.Sprintf("Service %s is %s", svcName, stateStr),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("Container for service %s is in state '%s' instead of 'running'", svcName, stateStr),
+					Mitigation: fmt.Sprintf("Run: docker-compose start %s or check logs: docker-compose logs %s", svcName, svcName),
+				})
+			}
+			continue
+		}
+
+		if inspect.Container.State != nil && inspect.Container.State.Health != nil {
 			healthStatus := string(inspect.Container.State.Health.Status)
 			if healthStatus != "healthy" {
 				reachabilityPassed = false
@@ -240,4 +272,14 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	}
 
 	return results
+}
+
+func isPortBindError(errStr string) bool {
+	errStr = strings.ToLower(errStr)
+	return strings.Contains(errStr, "port") ||
+		strings.Contains(errStr, "bind") ||
+		strings.Contains(errStr, "address") ||
+		strings.Contains(errStr, "allocat") ||
+		strings.Contains(errStr, "already in use") ||
+		strings.Contains(errStr, "connectivity")
 }

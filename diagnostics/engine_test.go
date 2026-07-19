@@ -365,3 +365,78 @@ services:
 		t.Error("expected to find port collision failure in Scenario B")
 	}
 }
+
+func TestEnginePortBindErrorState(t *testing.T) {
+	tempDir := t.TempDir()
+
+	composeContent := `
+services:
+  web:
+    ports:
+      - "8080:80"
+`
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	projName := filepath.Base(tempDir)
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{
+				Items: []container.Summary{
+					{
+						ID:    "mock-id",
+						State: "exited",
+						Labels: map[string]string{
+							"com.docker.compose.project": projName,
+							"com.docker.compose.service": "web",
+						},
+					},
+				},
+			}, nil
+		},
+		inspectFunc: func(ctx context.Context, containerID string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+			return client.ContainerInspectResult{
+				Container: container.InspectResponse{
+					State: &container.State{
+						Running: false,
+						Status:  "exited",
+						Error:   "driver failed programming external connectivity: port 8080 is already allocated",
+					},
+				},
+			}, nil
+		},
+	}
+
+	engine := NewEngine(tempDir, composePath, nil, comp, mockDocker)
+	report := engine.Run(context.Background())
+
+	if report.Status != output.StatusEnvironmentBroken {
+		t.Errorf("expected environment_broken status, got: %s", report.Status)
+	}
+
+	foundSpecificError := false
+	for _, check := range report.Checks {
+		if check.Status == output.CheckFailed && check.Group == "Network & Port Availability" {
+			if check.Name == "Service web failed to start" && strings.Contains(check.Error, "port collision") {
+				foundSpecificError = true
+				break
+			}
+		}
+	}
+
+	if !foundSpecificError {
+		t.Error("expected to find port-specific service start failure in report")
+		for _, check := range report.Checks {
+			if check.Status == output.CheckFailed {
+				t.Logf("Failed check: Name=%s, Group=%s, Error=%s", check.Name, check.Group, check.Error)
+			}
+		}
+	}
+}
