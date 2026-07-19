@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/marcelo-lipienski/halo/output"
 )
@@ -30,7 +31,8 @@ func extractReferencedEnvVars(composePath string) ([]envVarRef, error) {
 		hasDefault := false
 		if len(match) > 1 && string(match[1]) != "" {
 			varName = string(match[1])
-			if len(match) > 2 && string(match[2]) != "" {
+			fullMatch := string(match[0])
+			if strings.HasPrefix(fullMatch, "${") && strings.Contains(fullMatch, "-") {
 				hasDefault = true
 			}
 		} else if len(match) > 3 && string(match[3]) != "" {
@@ -69,6 +71,9 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 	for _, ref := range refs {
 		val, exists := e.Env[ref.name]
 		if !exists {
+			if ref.hasDefault {
+				continue
+			}
 			variablesCheckPassed = false
 			results = append(results, output.CheckResult{
 				Group:      "Environmental Alignment",

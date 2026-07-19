@@ -41,7 +41,7 @@ services:
   app:
     environment:
       - PORT=${APP_PORT:-8080}
-      - DB_USER
+      - DB_USER=${DB_USER}
     ports:
       - "${HOST_PORT:-8081}:8080"
     volumes:
@@ -189,5 +189,67 @@ services:
 
 	if report.Status != output.StatusHealthy {
 		t.Errorf("expected status healthy for custom paths, got: %s", report.Status)
+	}
+}
+
+func TestEngineVariableDefaults(t *testing.T) {
+	tempDir := t.TempDir()
+
+	composeContent := `
+services:
+  app:
+    environment:
+      - PORT=${APP_PORT:-8080}
+      - PLATFORM=${DOCKER_PLATFORM-linux/amd}
+`
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	env := map[string]string{}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	projName := filepath.Base(tempDir)
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{
+				Items: []container.Summary{
+					{
+						ID:    "mock-id",
+						State: "running",
+						Labels: map[string]string{
+							"com.docker.compose.project": projName,
+							"com.docker.compose.service": "app",
+						},
+					},
+				},
+			}, nil
+		},
+		inspectFunc: func(ctx context.Context, containerID string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+			return client.ContainerInspectResult{
+				Container: container.InspectResponse{
+					State: &container.State{
+						Running: true,
+					},
+				},
+			}, nil
+		},
+	}
+
+	engine := NewEngine(tempDir, composePath, env, comp, mockDocker)
+	report := engine.Run(context.Background())
+
+	if report.Status != output.StatusHealthy {
+		t.Errorf("expected status healthy when missing variables have compose defaults, got: %s", report.Status)
+		for _, check := range report.Checks {
+			if check.Status == output.CheckFailed {
+				t.Logf("Failed check: %s (%s) - %s", check.Name, check.Group, check.Error)
+			}
+		}
 	}
 }
