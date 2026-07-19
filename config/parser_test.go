@@ -481,6 +481,41 @@ services:
 	}
 }
 
+func TestParseComposeNullEnv(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web:
+    environment:
+      PORT: 8080
+      NULL_VAR: null
+      EMPTY_VAR: ""
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose file: %v", err)
+	}
+
+	config, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("unexpected error parsing compose: %v", err)
+	}
+
+	web, ok := config.Services["web"]
+	if !ok {
+		t.Fatal("web service not found")
+	}
+
+	expectedWebEnv := ComposeEnvironment{
+		"PORT":      "8080",
+		"NULL_VAR":  "",
+		"EMPTY_VAR": "",
+	}
+	if !reflect.DeepEqual(web.Environment, expectedWebEnv) {
+		t.Errorf("web env expected %v, got %v", expectedWebEnv, web.Environment)
+	}
+}
+
 func BenchmarkParseCompose(b *testing.B) {
 	tempDir := b.TempDir()
 	composePath := filepath.Join(tempDir, "docker-compose.yml")

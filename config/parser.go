@@ -127,11 +127,25 @@ func (ce *ComposeEnvironment) UnmarshalYAML(value *yaml.Node) error {
 	*ce = make(map[string]string)
 	switch value.Kind {
 	case yaml.MappingNode:
-		var m map[string]string
-		if err := value.Decode(&m); err != nil {
-			return err
+		for i := 0; i < len(value.Content); i += 2 {
+			keyNode := value.Content[i]
+			valNode := value.Content[i+1]
+
+			var key string
+			if err := keyNode.Decode(&key); err != nil {
+				return err
+			}
+
+			var val string
+			if valNode.Tag == "!!null" {
+				val = ""
+			} else {
+				if err := valNode.Decode(&val); err != nil {
+					return err
+				}
+			}
+			(*ce)[key] = val
 		}
-		*ce = m
 	case yaml.SequenceNode:
 		var s []string
 		if err := value.Decode(&s); err != nil {
