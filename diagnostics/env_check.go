@@ -3,8 +3,6 @@ package diagnostics
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -18,57 +16,77 @@ type envVarRef struct {
 	hasDefault bool
 }
 
-func extractReferencedEnvVars(composePath string) ([]envVarRef, error) {
-	content, err := os.ReadFile(composePath)
-	if err != nil {
-		return nil, err
-	}
-	matches := envVarRegex.FindAllSubmatch(content, -1)
+func (e *Engine) extractReferencedEnvVars() []envVarRef {
 	var refs []envVarRef
 	seen := make(map[string]bool)
-	for _, match := range matches {
-		varName := ""
-		hasDefault := false
-		if len(match) > 1 && string(match[1]) != "" {
-			varName = string(match[1])
-			fullMatch := string(match[0])
-			if strings.HasPrefix(fullMatch, "${") && strings.Contains(fullMatch, "-") {
-				hasDefault = true
-			}
-		} else if len(match) > 3 && string(match[3]) != "" {
-			varName = string(match[3])
-		}
 
-		if varName != "" && !seen[varName] {
-			seen[varName] = true
-			refs = append(refs, envVarRef{
-				name:       varName,
-				hasDefault: hasDefault,
-			})
+	parseStr := func(s string) {
+		matches := envVarRegex.FindAllStringSubmatch(s, -1)
+		for _, match := range matches {
+			varName := ""
+			hasDefault := false
+			if len(match) > 1 && match[1] != "" {
+				varName = match[1]
+				fullMatch := match[0]
+				if strings.HasPrefix(fullMatch, "${") && strings.Contains(fullMatch, "-") {
+					hasDefault = true
+				}
+			} else if len(match) > 3 && match[3] != "" {
+				varName = match[3]
+			}
+
+			if varName != "" && !seen[varName] {
+				seen[varName] = true
+				refs = append(refs, envVarRef{
+					name:       varName,
+					hasDefault: hasDefault,
+				})
+			}
 		}
 	}
-	return refs, nil
+
+	for _, svc := range e.Compose.Services {
+		for _, val := range svc.Environment {
+			parseStr(val)
+		}
+		for _, port := range svc.Ports {
+			parseStr(port)
+		}
+		for _, vol := range svc.Volumes {
+			parseStr(vol.Source)
+			parseStr(vol.Target)
+		}
+		if svc.Image != "" {
+			parseStr(svc.Image)
+		}
+		if svc.ContainerName != "" {
+			parseStr(svc.ContainerName)
+		}
+		for _, ep := range svc.Entrypoint {
+			parseStr(ep)
+		}
+		for _, cmd := range svc.Command {
+			parseStr(cmd)
+		}
+	}
+	return refs
 }
 
 func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.CheckResult {
 	var results []output.CheckResult
 
-	refs, err := extractReferencedEnvVars(e.ComposePath)
-	if err != nil {
-		results = append(results, output.CheckResult{
-			Group:      "Environmental Alignment",
-			Name:       "Variables Check",
-			Status:     output.CheckFailed,
-			Error:      fmt.Sprintf("Failed to read docker-compose file to scan env vars: %v", err),
-			Mitigation: fmt.Sprintf("Ensure %s exists and is readable.", filepath.Base(e.ComposePath)),
-		})
-		return results
-	}
+	refs := e.extractReferencedEnvVars()
 
 	variablesCheckPassed := true
 	mismatchedTypesPassed := true
 
 	for _, ref := range refs {
+		select {
+		case <-ctx.Done():
+			return results
+		default:
+		}
+
 		val, exists := e.Env[ref.name]
 		if !exists {
 			if ref.hasDefault {
