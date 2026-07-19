@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 
 	"github.com/marcelo-lipienski/halo/output"
 )
@@ -28,22 +29,18 @@ func (e *Engine) extractReferencedEnvVars() []envVarRef {
 				// Escaped, skip
 				continue
 			}
-			match := envVarRegex.FindStringSubmatch(s[start:matchIdx[1]])
-			if len(match) == 0 {
-				continue
-			}
 
 			varName := ""
 			hasDefault := false
-			if len(match) > 1 && match[1] != "" {
-				varName = match[1]
+			if len(matchIdx) > 3 && matchIdx[2] != -1 && matchIdx[3] != -1 {
+				varName = s[matchIdx[2]:matchIdx[3]]
 				// Capture group 2 holds the default value portion (e.g. "80" in ${PORT:-80}).
 				// A non-empty capture group 2 means a default was explicitly declared.
-				if len(match) > 2 && match[2] != "" {
+				if len(matchIdx) > 5 && matchIdx[4] != -1 && matchIdx[5] != -1 {
 					hasDefault = true
 				}
-			} else if len(match) > 3 && match[3] != "" {
-				varName = match[3]
+			} else if len(matchIdx) > 7 && matchIdx[6] != -1 && matchIdx[7] != -1 {
+				varName = s[matchIdx[6]:matchIdx[7]]
 			}
 
 			if varName != "" && !seen[varName] {
@@ -56,7 +53,15 @@ func (e *Engine) extractReferencedEnvVars() []envVarRef {
 		}
 	}
 
-	for _, svc := range e.Compose.Services {
+	// Sort service names for deterministic environment extraction
+	var svcNames []string
+	for name := range e.Compose.Services {
+		svcNames = append(svcNames, name)
+	}
+	sort.Strings(svcNames)
+
+	for _, svcName := range svcNames {
+		svc := e.Compose.Services[svcName]
 		for key, val := range svc.Environment {
 			if val == "" {
 				// Pass-through variable (e.g. - DB_PASSWORD or DB_PASSWORD:)
