@@ -31,6 +31,25 @@ func printVersion() {
 	if info, ok := debug.ReadBuildInfo(); ok {
 		if version == "dev" && info.Main.Version != "" && info.Main.Version != "(devel)" {
 			version = info.Main.Version
+			// If it's a Go pseudo-version (e.g. v0.2.3-0.20260719154649-fb27bb3b90df),
+			// extract the 12-character commit hash suffix.
+			parts := strings.Split(version, "-")
+			if len(parts) >= 3 && commit == "unknown" {
+				lastPart := parts[len(parts)-1]
+				if len(lastPart) == 12 {
+					isHex := true
+					for i := 0; i < len(lastPart); i++ {
+						c := lastPart[i]
+						if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+							isHex = false
+							break
+						}
+					}
+					if isHex {
+						commit = lastPart[:7]
+					}
+				}
+			}
 		}
 		if commit == "unknown" {
 			for _, setting := range info.Settings {
@@ -45,7 +64,11 @@ func printVersion() {
 		}
 	}
 
-	fmt.Printf("halo version %s (%s)\n", version, commit)
+	if commit != "unknown" {
+		fmt.Printf("halo version %s (%s)\n", version, commit)
+	} else {
+		fmt.Printf("halo version %s\n", version)
+	}
 	fmt.Printf("Go runtime:  %s (%s/%s)\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }
 
