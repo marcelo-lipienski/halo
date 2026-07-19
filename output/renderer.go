@@ -67,13 +67,17 @@ func RenderText(w io.Writer, report *DiagnosticsReport, verbose bool) {
 	fmt.Fprintf(w, "Duration: %dms\n", report.DurationMs)
 
 	currentGroup := ""
+	passed := 0
+	total := 0
 	for _, check := range report.Checks {
+		total++
 		if check.Group != currentGroup {
 			currentGroup = check.Group
 			fmt.Fprintf(w, "\n[%s]\n", currentGroup)
 		}
 
 		if check.Status == CheckPassed {
+			passed++
 			fmt.Fprintf(w, "  \033[32m✓\033[0m %s\n", check.Name)
 		} else if check.Status == CheckWarning {
 			fmt.Fprintf(w, "  \033[33m⚠\033[0m %s\n", check.Name)
@@ -85,7 +89,8 @@ func RenderText(w io.Writer, report *DiagnosticsReport, verbose bool) {
 			}
 		} else {
 			fmt.Fprintf(w, "  \033[31m✗\033[0m %s\n", check.Name)
-			if check.Error != "" && verbose {
+			// Always show the error detail on failures — it's the actionable reason.
+			if check.Error != "" {
 				fmt.Fprintf(w, "    \033[90mError:\033[0m   %s\n", check.Error)
 			}
 			if check.Mitigation != "" {
@@ -93,5 +98,16 @@ func RenderText(w io.Writer, report *DiagnosticsReport, verbose bool) {
 			}
 		}
 	}
+
+	fmt.Fprintln(w)
+	if total > 0 {
+		failed := total - passed
+		if failed == 0 {
+			fmt.Fprintf(w, "\033[32m%d of %d checks passed.\033[0m\n", passed, total)
+		} else {
+			fmt.Fprintf(w, "\033[31m%d of %d checks passed (%d failed).\033[0m\n", passed, total, failed)
+		}
+	}
 	fmt.Fprintln(w)
 }
+
