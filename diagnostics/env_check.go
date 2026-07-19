@@ -51,22 +51,14 @@ func extractReferencedEnvVars(composePath string) ([]envVarRef, error) {
 func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.CheckResult {
 	var results []output.CheckResult
 
-	// Path to compose file
-	composePathYml := filepath.Join(e.ConfigDir, "docker-compose.yml")
-	composePathYaml := filepath.Join(e.ConfigDir, "docker-compose.yaml")
-	composePath := composePathYml
-	if _, err := os.Stat(composePathYaml); err == nil {
-		composePath = composePathYaml
-	}
-
-	refs, err := extractReferencedEnvVars(composePath)
+	refs, err := extractReferencedEnvVars(e.ComposePath)
 	if err != nil {
 		results = append(results, output.CheckResult{
 			Group:      "Environmental Alignment",
 			Name:       "Variables Check",
 			Status:     output.CheckFailed,
 			Error:      fmt.Sprintf("Failed to read docker-compose file to scan env vars: %v", err),
-			Mitigation: "Ensure docker-compose.yml exists and is readable.",
+			Mitigation: fmt.Sprintf("Ensure %s exists and is readable.", filepath.Base(e.ComposePath)),
 		})
 		return results
 	}

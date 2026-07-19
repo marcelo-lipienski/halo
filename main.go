@@ -29,12 +29,17 @@ func printVersion() {
 
 func main() {
 	var configDir string
+	var envFile string
+	var composeFile string
 	var format string
 	var verbose bool
 
 	fs := flag.NewFlagSet("halo", flag.ExitOnError)
 	fs.StringVar(&configDir, "config-dir", ".", "Path to the directory containing local configuration files")
 	fs.StringVar(&configDir, "c", ".", "Path to the directory containing local configuration files (shorthand)")
+	fs.StringVar(&envFile, "env-file", "", "Explicit path to the .env file")
+	fs.StringVar(&envFile, "e", "", "Explicit path to the .env file (shorthand)")
+	fs.StringVar(&composeFile, "compose-file", "", "Explicit path to the docker-compose.yml file")
 	fs.StringVar(&format, "format", "text", "Output format for results (text|json)")
 	fs.StringVar(&format, "f", "text", "Output format for results (text|json) (shorthand)")
 	fs.BoolVar(&verbose, "verbose", false, "Enables debug logging")
@@ -66,7 +71,7 @@ func main() {
 		printVersion()
 		os.Exit(0)
 	case "check":
-		runCheck(configDir, format, verbose)
+		runCheck(configDir, envFile, composeFile, format, verbose)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
 		fmt.Fprintln(os.Stderr, "Usage: halo [command] [flags]")
@@ -77,7 +82,7 @@ func main() {
 	}
 }
 
-func runCheck(configDir, format string, verbose bool) {
+func runCheck(configDir, envFile, composeFile, format string, verbose bool) {
 	format = strings.ToLower(format)
 	if format != "text" && format != "json" {
 		fmt.Fprintf(os.Stderr, "Invalid format: %s. Supported formats: text, json\n", format)
@@ -87,20 +92,35 @@ func runCheck(configDir, format string, verbose bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	composePathYml := filepath.Join(configDir, "docker-compose.yml")
-	composePathYaml := filepath.Join(configDir, "docker-compose.yaml")
-	composePath := composePathYml
-	if _, err := os.Stat(composePathYaml); err == nil {
-		composePath = composePathYaml
+	envPath := envFile
+	if envPath == "" {
+		envPath = filepath.Join(configDir, ".env")
 	}
 
-	envPath := filepath.Join(configDir, ".env")
+	composePath := composeFile
+	if composePath == "" {
+		composePathYml := filepath.Join(configDir, "docker-compose.yml")
+		composePathYaml := filepath.Join(configDir, "docker-compose.yaml")
+		composePath = composePathYml
+		if _, err := os.Stat(composePathYaml); err == nil {
+			composePath = composePathYaml
+		}
+	}
 
 	_, composeStatErr := os.Stat(composePath)
 	_, envStatErr := os.Stat(envPath)
 
 	if os.IsNotExist(composeStatErr) || os.IsNotExist(envStatErr) {
-		exitWithSystemFailure(format, "Missing configuration files: .env and docker-compose.yml must exist in the target directory.", "Ensure both .env and docker-compose.yml are present in your workspace configuration directory.")
+		var missing []string
+		if os.IsNotExist(envStatErr) {
+			missing = append(missing, filepath.Base(envPath))
+		}
+		if os.IsNotExist(composeStatErr) {
+			missing = append(missing, filepath.Base(composePath))
+		}
+		errStr := fmt.Sprintf("Missing configuration files: %s must exist.", strings.Join(missing, " and "))
+		mitigationStr := fmt.Sprintf("Ensure both your .env file and docker-compose.yml file are present at their specified paths (%s and %s).", envPath, composePath)
+		exitWithSystemFailure(format, errStr, mitigationStr)
 	}
 
 	env, err := config.ParseEnv(envPath)
@@ -126,7 +146,8 @@ func runCheck(configDir, format string, verbose bool) {
 		exitWithSystemFailure(format, fmt.Sprintf("Docker daemon is unreachable: %v", err), "Ensure Docker daemon/service is running and socket is accessible.")
 	}
 
-	engine := diagnostics.NewEngine(configDir, env, comp, dockerCli)
+	engineConfigDir := filepath.Dir(composePath)
+	engine := diagnostics.NewEngine(engineConfigDir, composePath, env, comp, dockerCli)
 	report := engine.Run(ctx)
 
 	if format == "json" {

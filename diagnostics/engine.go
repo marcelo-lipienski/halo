@@ -12,19 +12,21 @@ import (
 
 // Engine runs the diagnostic suites
 type Engine struct {
-	ConfigDir string
-	Env       map[string]string
-	Compose   *config.ComposeConfig
-	DockerCli client.ContainerAPIClient
+	ConfigDir   string
+	ComposePath string
+	Env         map[string]string
+	Compose     *config.ComposeConfig
+	DockerCli   client.ContainerAPIClient
 }
 
 // NewEngine instantiates a new Diagnostics Engine
-func NewEngine(configDir string, env map[string]string, compose *config.ComposeConfig, dockerCli client.ContainerAPIClient) *Engine {
+func NewEngine(configDir, composePath string, env map[string]string, compose *config.ComposeConfig, dockerCli client.ContainerAPIClient) *Engine {
 	return &Engine{
-		ConfigDir: configDir,
-		Env:       env,
-		Compose:   compose,
-		DockerCli: dockerCli,
+		ConfigDir:   configDir,
+		ComposePath: composePath,
+		Env:         env,
+		Compose:     compose,
+		DockerCli:   dockerCli,
 	}
 }
 
