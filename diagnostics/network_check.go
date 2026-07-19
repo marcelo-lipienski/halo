@@ -91,26 +91,26 @@ func checkSinglePortCollision(hostPort string, proto string) bool {
 		if err != nil {
 			return true
 		}
-		l.Close()
+		_ = l.Close()
 
 		l2, err2 := net.ListenPacket("udp", "0.0.0.0:"+hostPort)
 		if err2 != nil {
 			return true
 		}
-		l2.Close()
+		_ = l2.Close()
 		return false
 	}
 	l, err := net.Listen("tcp", "127.0.0.1:"+hostPort)
 	if err != nil {
 		return true
 	}
-	l.Close()
+	_ = l.Close()
 
 	l2, err2 := net.Listen("tcp", "0.0.0.0:"+hostPort)
 	if err2 != nil {
 		return true
 	}
-	l2.Close()
+	_ = l2.Close()
 	return false
 }
 
