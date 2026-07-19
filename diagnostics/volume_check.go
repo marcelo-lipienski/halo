@@ -8,10 +8,17 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/marcelo-lipienski/halo/output"
 )
+
+func isLikelyFilePath(path string) bool {
+	base := filepath.Base(path)
+	ext := filepath.Ext(path)
+	return ext != "" || base == ".env" || base == ".gitignore" || base == "Dockerfile"
+}
 
 func isReadable(path string) (bool, error) {
 	info, err := os.Stat(path)
@@ -54,8 +61,8 @@ func isWritable(path string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
+		defer os.Remove(tempFile.Name())
 		tempFile.Close()
-		os.Remove(tempFile.Name())
 		return true, nil
 	}
 
@@ -171,7 +178,14 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 	volumeCheckPassed := true
 
 	// 1. Volumes Check
-	for svcName, svc := range e.Compose.Services {
+	var svcNames []string
+	for name := range e.Compose.Services {
+		svcNames = append(svcNames, name)
+	}
+	sort.Strings(svcNames)
+
+	for _, svcName := range svcNames {
+		svc := e.Compose.Services[svcName]
 		for _, vol := range svc.Volumes {
 			select {
 			case <-ctx.Done():
@@ -244,9 +258,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 			info, err := os.Stat(hostPath)
 			if os.IsNotExist(err) {
 				if e.AutoFix {
-					base := filepath.Base(hostPath)
-					ext := filepath.Ext(hostPath)
-					isLikelyFile := ext != "" || base == ".env" || base == ".gitignore" || base == "Dockerfile"
+					isLikelyFile := isLikelyFilePath(hostPath)
 					var fixErr error
 					if isLikelyFile {
 						dir := filepath.Dir(hostPath)
@@ -276,9 +288,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 
 				volumeCheckPassed = false
 
-				base := filepath.Base(hostPath)
-				ext := filepath.Ext(hostPath)
-				isLikelyFile := ext != "" || base == ".env" || base == ".gitignore" || base == "Dockerfile"
+				isLikelyFile := isLikelyFilePath(hostPath)
 
 				mitigation := fmt.Sprintf("Run: mkdir -p %s && chmod -R 775 %s", hostPath, hostPath)
 				if isLikelyFile {
@@ -322,7 +332,14 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 	}
 
 	// 2. Secrets Check
-	for secName, sec := range e.Compose.Secrets {
+	var secNames []string
+	for name := range e.Compose.Secrets {
+		secNames = append(secNames, name)
+	}
+	sort.Strings(secNames)
+
+	for _, secName := range secNames {
+		sec := e.Compose.Secrets[secName]
 		select {
 		case <-ctx.Done():
 			results = append(results, output.CheckResult{
@@ -422,7 +439,14 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 	}
 
 	// 3. Configs Check
-	for cfgName, cfg := range e.Compose.Configs {
+	var cfgNames []string
+	for name := range e.Compose.Configs {
+		cfgNames = append(cfgNames, name)
+	}
+	sort.Strings(cfgNames)
+
+	for _, cfgName := range cfgNames {
+		cfg := e.Compose.Configs[cfgName]
 		select {
 		case <-ctx.Done():
 			results = append(results, output.CheckResult{

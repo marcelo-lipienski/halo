@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -167,7 +168,16 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	// 1. Port Collision Check
 	servicesWithCollisions := make(map[string]bool)
 	portCollisionPassed := true
-	for svcName, svc := range e.Compose.Services {
+
+	// Sort service names for deterministic checks
+	var svcNames []string
+	for name := range e.Compose.Services {
+		svcNames = append(svcNames, name)
+	}
+	sort.Strings(svcNames)
+
+	for _, svcName := range svcNames {
+		svc := e.Compose.Services[svcName]
 		select {
 		case <-ctx.Done():
 			results = append(results, output.CheckResult{
@@ -263,7 +273,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 
 	reachabilityPassed := true
 	warned := 0 // tracks non-fatal health warnings (e.g. "starting" state)
-	for svcName := range e.Compose.Services {
+	for _, svcName := range svcNames {
 		select {
 		case <-ctx.Done():
 			results = append(results, output.CheckResult{
