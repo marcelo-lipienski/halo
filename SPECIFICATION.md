@@ -24,6 +24,10 @@ The tool must support the following command structure and flags:
   Explicit path(s) to the docker-compose.yml file (can specify multiple times).
 * `--fix`
   Automatically attempt to mitigate file permission and missing directory/file issues.
+* `--dry-run`
+  Preview mitigation steps when running with `--fix` without making modifications on the host filesystem.
+* `--quiet, -q`
+  Suppresses all standard output while routing critical system/discovery failures to stderr.
 * `--format, -f <text|json>`
   Output format for results. `json` format prints a single structured payload to stdout for integration into setup automation scripts (Default: `text`).
 * `--verbose, -v`
@@ -44,26 +48,31 @@ When `halo check` is executed, the engine must execute the following sequential 
 
 ### Phase 2: Configuration Analysis (AST Parsing)
 * Extract variable declarations from `.env`.
-* Parse `docker-compose.yml` into structural domain types without using heavy, unnecessary system dependencies. 
-* Map out defined services, their expected environment mappings, exposed/internal ports, and mounted storage volumes.
+* Parse `docker-compose.yml` into structural domain types without using heavy, unnecessary system dependencies.
+* Resolve dynamic environment parameters using AST-compliant shell-expression parsing (supporting default fallbacks like `${VAR:-default}` and required checks like `${VAR:?error}`).
+* Map out defined services, their expected environment mappings, exposed/internal ports, mounted storage volumes, secrets, and configs.
 
 ### Phase 3: Concurrent Diagnostic Execution
 The suite must run individual check groups concurrently using lightweight, native goroutines with synchronized error/result aggregation. Each check group receives a scoped context timeout of 2 seconds.
 
 #### Check Group A: Environmental Alignment
-* **Variables Check:** Ensure every environment variable referenced in `docker-compose.yml` (e.g., `${DB_PASSWORD}`) is explicitly defined in the local `.env` file.
+* **Variables Check:** Ensure every environment variable referenced in `docker-compose.yml` is explicitly defined in the local `.env` file or host environment.
 * **Mismatched Types:** Flag variables that are defined but empty if they are structurally required.
 
 #### Check Group B: Network & Port Availability
-* **Port Collision Check:** Scan the local host system to ensure target host ports mapped in `docker-compose.yml` are not already occupied by native host processes or dangling legacy containers.
-* **Service Reachability:** Verify container running states and health check statuses via the Docker engine API to confirm active services are initialized and functional (avoiding false-positive socket failures caused by host firewalls or VPN routings).
+* **Port Collision Check:** Scan the local host system to ensure target host ports mapped in `docker-compose.yml` are not occupied.
+  * *Self-Port Exclusion:* Ports bound by the same container service in the current docker-compose project are bypassed to prevent false-positive collisions.
+  * *Scale Protection:* A warning is emitted if a port range maps more than 64 ports to prevent timeouts.
+* **Service Reachability:** Verify container running states and health check statuses via the Docker engine API. Treats starting containers or missing containers as non-fatal warnings (`CheckWarning`).
 
 #### Check Group C: Volume & File Permissions
-* **Mount Validation:** Identify all host paths mounted into containers as volumes.
-* **Permission Verification:** Verify that the current host user has explicit read/write privileges on those directories. Flag if storage folders are locked or missing correct ownership attributes (preventing container write failures).
+* **Mount Validation:** Identify host paths mounted as volumes.
+* **Secrets & Configs Validation:** Identify Docker Secrets and Docker Config files, validating their existence and readability.
+* **Permission Verification:** Verify that the current host user has explicit read/write privileges on directories/files.
+  * *Auto-Fix & Verification:* When `--fix` is active, missing directories/files are created and permissions are corrected, followed by a re-verification check.
 
 ### Phase 4: Output Rendering & Exit Boundaries
-* **Text Format:** Print a clean, scannable terminal checklist using standard ANSI codes. Failures must include an indented, explicit mitigation step (e.g., "Run: chmod -R 775 ./storage").
+* **Text Format:** Print a clean, scannable terminal checklist using standard ANSI codes. Failures must include an indented, explicit mitigation step (e.g., "Run: chmod -R 775 ./storage"). Automatically honors the `NO_COLOR` standard and detects non-TTY outputs.
 * **JSON Format:** Stream a single-line minified JSON object containing an overall status string, individual check array results, and execution duration.
 
 ---

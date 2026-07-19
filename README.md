@@ -16,14 +16,28 @@ Instead of wasting engineering hours debugging mismatched environment configurat
 
 ---
 
-## Architectural Lifecycle
+## Architectural Lifecycle & Execution Flow
 
 `halo` operates as a single, decoupled binary that safely evaluates your system state without side effects:
 
-```
-[1. Discovery] ──> [2. Configuration Parsing] ──> [3. Concurrent Checks] ──> [4. Actionable UI]
-Locate local        Extract .env & Compose        Run Port, Volume, &      Render ANSI status
-config files        AST structures natively       Env checks in parallel   or stream JSON
+```mermaid
+graph TD
+    A[main.go: runCheck] -->|10s timeout ctx| B(Phase 1: Discovery)
+    B -->|Check .env & Compose| C{Files present?}
+    C -->|No| D[Exit Code 1: System Failure]
+    C -->|Yes| E[Docker Daemon Accessible?]
+    E -->|No| D
+    E -->|Yes| F(Phase 2: Configuration Analysis)
+    F -->|Unmarshal YAML & load variables| G[diagnostics.NewEngine]
+    G --> H(Phase 3: Concurrent Diagnostics)
+    H -->|Goroutine A: 2s timeout| I[Environmental Alignment]
+    H -->|Goroutine B: 2s timeout| J[Network & Port Availability]
+    H -->|Goroutine C: 2s timeout| K[Volume & File Permissions]
+    I --> L[Sync Result Aggregation]
+    J --> L
+    K --> L
+    L --> M(Phase 4: Output Rendering)
+    M -->|JSON or Colorized ANSI Text| N[Exit Code Matrix: 0, 1, or 2]
 ```
 
 ---

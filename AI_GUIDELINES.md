@@ -23,6 +23,7 @@ This document defines the strict engineering standards, architectural boundaries
 * **Concurrency Management:** Always propagate and respect `context.Context` for all diagnostic checks, network pings, and file system scans. Enforce hard timeouts to prevent execution hangs.
 * **Error Wrapping:** Utilize native Go error handling. Leverage `errors.Join` when compiling multi-container reports to aggregate errors cleanly without losing type data.
 * **Memory & Types:** Use structured slice and map initializations. Maintain strict type safety across all configuration parsing models (`.env`, `docker-compose.yml`).
+* **AST-based Parameter Expansion:** Avoid fragile regex patterns for environment variable extraction and substitution in configuration files. Utilize AST-based parsing (such as `mvdan.cc/sh/v3`) to guarantee compliance with standard shell parameter expansions (e.g. default fallbacks, error signals).
 
 ---
 

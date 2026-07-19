@@ -8,6 +8,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-07-19
+
+### Added
+- `--quiet` / `-q` flag: suppresses standard output, routing system/discovery failures to `stderr` for CI scripting.
+- `--dry-run` flag: simulates autofix mitigations (`--fix`) without performing write changes on the host filesystem.
+- Docker Secrets and Docker Configs validation (existence, readability, auto-fixing missing files).
+- Port scale protection: emits a warning if a mapped port range exceeds 64 ports.
+- Mermaid-based Execution Pipeline Flow diagram in `README.md`.
+
+### Fixed
+- AST-compliant shell-expression expansion via `mvdan.cc/sh/v3` instead of standard regex patterns.
+- Re-verify readability after applying permissions in `--fix` and log original file/directory permissions.
+- Downgrade "No container found for service" check to a warning instead of a critical failure.
+- Make service reachability check granular and symmetric per service (handling starting, unhealthy, and running states correctly).
+- Self-exclusion for network port collisions: if a port is bound by a running container belonging to the same project and service, it is not flagged as a collision.
+- Upgraded Go compiler/lint target in `golangci-lint` configuration to Go 1.26.
+
+## [0.1.0] — 2026-07-18
+
+### Fixed
+- Skip POSIX directory permission assertions on Windows in diagnostics test.
+- Resolve API deprecation, staticcheck, govet, and errcheck lint warnings.
+- Resolve golangci-lint schema compliance warning.
+
 ## [0.1.0-beta.1] — 2026-07-18
 
 ### Added
@@ -39,5 +63,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Mitigation strings use `docker compose` (modern CLI) instead of the deprecated `docker-compose`.
 - `exitWithSystemFailure` now respects the `--verbose` flag consistently.
 
-[Unreleased]: https://github.com/marcelo-lipienski/halo/compare/v0.1.0-beta.1...HEAD
+[Unreleased]: https://github.com/marcelo-lipienski/halo/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/marcelo-lipienski/halo/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/marcelo-lipienski/halo/compare/v0.1.0-beta.1...v0.1.0
 [0.1.0-beta.1]: https://github.com/marcelo-lipienski/halo/releases/tag/v0.1.0-beta.1

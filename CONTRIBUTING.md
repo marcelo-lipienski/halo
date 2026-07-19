@@ -83,7 +83,7 @@ make bench
 
 ```bash
 # With version tag (set VERSION explicitly or let git describe resolve it)
-VERSION=v0.1.0 make build
+VERSION=v0.2.0 make build
 
 # Verify version is baked in
 ./halo version
