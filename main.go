@@ -49,12 +49,21 @@ func main() {
 
 	command := ""
 	var flagArgs []string
-	for _, arg := range args {
-		if !strings.HasPrefix(arg, "-") && command == "" {
-			command = arg
-		} else {
-			flagArgs = append(flagArgs, arg)
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "check" || arg == "version" {
+			if command == "" {
+				command = arg
+				continue
+			}
 		}
+		// If it's a flag that takes an argument, consume the flag and its value
+		if (arg == "-c" || arg == "--config-dir" || arg == "-e" || arg == "--env-file" || arg == "--compose-file" || arg == "-f" || arg == "--format") && i+1 < len(args) {
+			flagArgs = append(flagArgs, arg, args[i+1])
+			i++
+			continue
+		}
+		flagArgs = append(flagArgs, arg)
 	}
 
 	if err := fs.Parse(flagArgs); err != nil {
