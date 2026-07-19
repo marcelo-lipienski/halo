@@ -1001,4 +1001,73 @@ services:
 	}
 }
 
+func TestEngineVolumeRelativePathResolution(t *testing.T) {
+	tempDir := t.TempDir()
+
+	baseDir := filepath.Join(tempDir, "base")
+	overrideDir := filepath.Join(tempDir, "override")
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		t.Fatalf("failed to create base dir: %v", err)
+	}
+	if err := os.MkdirAll(overrideDir, 0755); err != nil {
+		t.Fatalf("failed to create override dir: %v", err)
+	}
+
+	// Create directories on host that the volumes reference
+	baseDataPath := filepath.Join(baseDir, "base_data")
+	if err := os.Mkdir(baseDataPath, 0755); err != nil {
+		t.Fatalf("failed to create base_data: %v", err)
+	}
+	overrideDataPath := filepath.Join(overrideDir, "override_data")
+	if err := os.Mkdir(overrideDataPath, 0755); err != nil {
+		t.Fatalf("failed to create override_data: %v", err)
+	}
+
+	baseContent := `
+services:
+  web:
+    volumes:
+      - ./base_data:/app/base_data
+`
+	basePath := filepath.Join(baseDir, "docker-compose.yml")
+	if err := os.WriteFile(basePath, []byte(baseContent), 0644); err != nil {
+		t.Fatalf("failed to write base compose file: %v", err)
+	}
+
+	overrideContent := `
+services:
+  web:
+    volumes:
+      - ./override_data:/app/override_data
+`
+	overridePath := filepath.Join(overrideDir, "docker-compose.override.yml")
+	if err := os.WriteFile(overridePath, []byte(overrideContent), 0644); err != nil {
+		t.Fatalf("failed to write override compose file: %v", err)
+	}
+
+	cfg1, err := config.ParseCompose(basePath)
+	if err != nil {
+		t.Fatalf("failed to parse base compose: %v", err)
+	}
+	cfg2, err := config.ParseCompose(overridePath)
+	if err != nil {
+		t.Fatalf("failed to parse override compose: %v", err)
+	}
+
+	merged := config.MergeComposeConfigs(cfg1, cfg2)
+
+	// Set up mock docker client (we don't test service reachability here, just volume permissions)
+	mockDocker := &mockDockerClient{}
+
+	engine := NewEngine(baseDir, basePath, nil, merged, mockDocker)
+	results := engine.checkVolumeAndPermissions(context.Background())
+
+	// Check if volume permissions check failed
+	for _, res := range results {
+		if res.Status == output.CheckFailed {
+			t.Errorf("expected volume check to pass, but failed: %s - %s", res.Name, res.Error)
+		}
+	}
+}
+
 

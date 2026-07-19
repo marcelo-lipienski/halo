@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -138,6 +139,7 @@ type ComposeVolume struct {
 	Target   string
 	Type     string // "bind" or "volume"
 	ReadOnly bool
+	BaseDir  string // Directory where the compose file containing this volume is located
 }
 
 func isWindowsDrivePath(path string) bool {
@@ -226,6 +228,19 @@ func ParseCompose(path string) (*ComposeConfig, error) {
 	if err := dec.Decode(&config); err != nil {
 		return nil, err
 	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	baseDir := filepath.Dir(absPath)
+	for svcName, svc := range config.Services {
+		for i := range svc.Volumes {
+			svc.Volumes[i].BaseDir = baseDir
+		}
+		config.Services[svcName] = svc
+	}
+
 	return &config, nil
 }
 

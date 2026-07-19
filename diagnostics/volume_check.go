@@ -123,7 +123,11 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				}
 			}
 			if !filepath.IsAbs(hostPath) {
-				hostPath = filepath.Join(e.ConfigDir, hostPath)
+				baseDir := vol.BaseDir
+				if baseDir == "" {
+					baseDir = e.ConfigDir
+				}
+				hostPath = filepath.Join(baseDir, hostPath)
 			}
 
 			// Clean path
