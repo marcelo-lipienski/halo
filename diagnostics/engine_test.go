@@ -1725,5 +1725,105 @@ services:
 	}
 }
 
+func TestEngineRequiredEnvVars(t *testing.T) {
+	cases := []struct {
+		name         string
+		env          map[string]string
+		expectStatus output.Status
+		expectError  string
+	}{
+		{
+			name: "required variable set and non-empty",
+			env: map[string]string{
+				"REQUIRED_VAR": "database_pass",
+			},
+			expectStatus: output.StatusHealthy,
+			expectError:  "",
+		},
+		{
+			name:         "required variable missing/unset",
+			env:          map[string]string{},
+			expectStatus: output.StatusEnvironmentBroken,
+			expectError:  "REQUIRED_VAR missing",
+		},
+		{
+			name: "required variable empty",
+			env: map[string]string{
+				"REQUIRED_VAR": "",
+			},
+			expectStatus: output.StatusEnvironmentBroken,
+			expectError:  "REQUIRED_VAR is required but empty",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			composeContent := `
+services:
+  app:
+    image: postgres
+    environment:
+      - DB_PASS=${REQUIRED_VAR:?database password must be set}
+`
+			composePath := filepath.Join(tempDir, "docker-compose.yml")
+			_ = os.WriteFile(composePath, []byte(composeContent), 0644)
+
+			comp, err := config.ParseCompose(composePath)
+			if err != nil {
+				t.Fatalf("failed to parse: %v", err)
+			}
+
+			mockDocker := &mockDockerClient{
+				listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+					// Emulate a running container to satisfy the reachability check
+					return client.ContainerListResult{
+						Items: []container.Summary{
+							{
+								ID:    "mock-id",
+								State: "running",
+								Labels: map[string]string{
+									"com.docker.compose.project": filepath.Base(tempDir),
+									"com.docker.compose.service": "app",
+								},
+							},
+						},
+					}, nil
+				},
+				inspectFunc: func(ctx context.Context, containerID string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+					return client.ContainerInspectResult{
+						Container: container.InspectResponse{
+							State: &container.State{Running: true},
+						},
+					}, nil
+				},
+			}
+
+			engine := NewEngine(tempDir, composePath, tc.env, comp, mockDocker)
+			report := engine.Run(context.Background())
+
+			if report.Status != tc.expectStatus {
+				t.Errorf("expected report status %s, got %s", tc.expectStatus, report.Status)
+			}
+
+			if tc.expectError != "" {
+				foundErr := false
+				for _, check := range report.Checks {
+					if check.Group == "Environmental Alignment" &&
+						check.Status == output.CheckFailed &&
+						strings.Contains(check.Name, tc.expectError) {
+						foundErr = true
+						break
+					}
+				}
+				if !foundErr {
+					t.Errorf("expected to find CheckFailed with name containing %q in checks: %+v", tc.expectError, report.Checks)
+				}
+			}
+		})
+	}
+}
+
+
 
 
