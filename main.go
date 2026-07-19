@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -24,7 +25,27 @@ var (
 )
 
 func printVersion() {
-	fmt.Printf("halo version %s (%s)\n", Version, CommitSHA)
+	version := Version
+	commit := CommitSHA
+
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if version == "dev" && info.Main.Version != "" && info.Main.Version != "(devel)" {
+			version = info.Main.Version
+		}
+		if commit == "unknown" {
+			for _, setting := range info.Settings {
+				if setting.Key == "vcs.revision" {
+					commit = setting.Value
+					if len(commit) > 7 {
+						commit = commit[:7]
+					}
+					break
+				}
+			}
+		}
+	}
+
+	fmt.Printf("halo version %s (%s)\n", version, commit)
 	fmt.Printf("Go runtime:  %s (%s/%s)\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }
 
