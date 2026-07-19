@@ -6,11 +6,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
+	"github.com/marcelo-lipienski/halo/output"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
-	"github.com/marcelo-lipienski/halo/output"
 )
 
 // resolveEnvVars expands environment variables like ${PORT:-80} or $PORT using e.Env and system Env
@@ -61,7 +62,31 @@ func parseHostPortProto(p string) (string, string) {
 	}
 }
 
-func checkPortCollision(hostPort string, proto string) bool {
+func checkPortCollision(hostPortRange string, proto string) bool {
+	parts := strings.Split(hostPortRange, "-")
+	if len(parts) == 1 {
+		return checkSinglePortCollision(hostPortRange, proto)
+	}
+	if len(parts) == 2 {
+		start, err1 := strconv.Atoi(parts[0])
+		end, err2 := strconv.Atoi(parts[1])
+		if err1 != nil || err2 != nil {
+			return checkSinglePortCollision(hostPortRange, proto)
+		}
+		if start > end {
+			start, end = end, start
+		}
+		for p := start; p <= end; p++ {
+			if checkSinglePortCollision(strconv.Itoa(p), proto) {
+				return true
+			}
+		}
+		return false
+	}
+	return checkSinglePortCollision(hostPortRange, proto)
+}
+
+func checkSinglePortCollision(hostPort string, proto string) bool {
 	if proto == "udp" {
 		l, err := net.ListenPacket("udp", "127.0.0.1:"+hostPort)
 		if err != nil {
@@ -78,12 +103,29 @@ func checkPortCollision(hostPort string, proto string) bool {
 	return false
 }
 
+func isPortBoundBySelf(port int, proto string, containers []container.Summary, projectName, svcName string) bool {
+	for _, c := range containers {
+		cProj := strings.ToLower(c.Labels["com.docker.compose.project"])
+		cSvc := c.Labels["com.docker.compose.service"]
+		if cProj == projectName && cSvc == svcName && c.State == "running" {
+			for _, p := range c.Ports {
+				if int(p.PublicPort) == port && p.Type == proto {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	var results []output.CheckResult
 
 	absDir, _ := filepath.Abs(e.ConfigDir)
 	projectName := filepath.Base(absDir)
-	if envProj := os.Getenv("COMPOSE_PROJECT_NAME"); envProj != "" {
+	if envProj, ok := e.Env["COMPOSE_PROJECT_NAME"]; ok && envProj != "" {
+		projectName = envProj
+	} else if envProj := os.Getenv("COMPOSE_PROJECT_NAME"); envProj != "" {
 		projectName = envProj
 	}
 	projectName = strings.ToLower(projectName)
@@ -103,48 +145,57 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	servicesWithCollisions := make(map[string]bool)
 	portCollisionPassed := true
 	for svcName, svc := range e.Compose.Services {
+		select {
+		case <-ctx.Done():
+			return results
+		default:
+		}
+
 		for _, rawPort := range svc.Ports {
 			resolvedPort := e.resolveEnvVars(rawPort)
-			hostPort, proto := parseHostPortProto(resolvedPort)
-			if hostPort == "" {
+			hostPortRange, proto := parseHostPortProto(resolvedPort)
+			if hostPortRange == "" {
 				continue
 			}
 
-			// Check if this port is already occupied by this service's own running container
-			isBoundBySelf := false
-			if hasContainers {
-				for _, c := range containers.Items {
-					cProj := strings.ToLower(c.Labels["com.docker.compose.project"])
-					cSvc := c.Labels["com.docker.compose.service"]
-					if cProj == projectName && cSvc == svcName && c.State == "running" {
-						for _, p := range c.Ports {
-							if fmt.Sprintf("%d", p.PublicPort) == hostPort && p.Type == proto {
-								isBoundBySelf = true
-								break
-							}
-						}
+			// Parse range into individual ports
+			var ports []int
+			parts := strings.Split(hostPortRange, "-")
+			if len(parts) == 1 {
+				p, err := strconv.Atoi(hostPortRange)
+				if err == nil {
+					ports = append(ports, p)
+				}
+			} else if len(parts) == 2 {
+				start, err1 := strconv.Atoi(parts[0])
+				end, err2 := strconv.Atoi(parts[1])
+				if err1 == nil && err2 == nil {
+					if start > end {
+						start, end = end, start
 					}
-					if isBoundBySelf {
-						break
+					for p := start; p <= end; p++ {
+						ports = append(ports, p)
 					}
 				}
 			}
 
-			if isBoundBySelf {
-				// The port is occupied by our own running container, which is expected
-				continue
-			}
+			for _, p := range ports {
+				pStr := strconv.Itoa(p)
+				if hasContainers && isPortBoundBySelf(p, proto, containers.Items, projectName, svcName) {
+					continue
+				}
 
-			if checkPortCollision(hostPort, proto) {
-				servicesWithCollisions[svcName] = true
-				portCollisionPassed = false
-				results = append(results, output.CheckResult{
-					Group:      "Network & Port Availability",
-					Name:       fmt.Sprintf("Port Collision %s:%s", svcName, hostPort),
-					Status:     output.CheckFailed,
-					Error:      fmt.Sprintf("Port %s (%s) mapped for service %s is already occupied on the host", hostPort, proto, svcName),
-					Mitigation: fmt.Sprintf("Stop the process occupying port %s or change the host port mapping in docker-compose.yml", hostPort),
-				})
+				if checkSinglePortCollision(pStr, proto) {
+					servicesWithCollisions[svcName] = true
+					portCollisionPassed = false
+					results = append(results, output.CheckResult{
+						Group:      "Network & Port Availability",
+						Name:       fmt.Sprintf("Port Collision %s:%s", svcName, pStr),
+						Status:     output.CheckFailed,
+						Error:      fmt.Sprintf("Port %s (%s) mapped for service %s is already occupied on the host", pStr, proto, svcName),
+						Mitigation: fmt.Sprintf("Stop the process occupying port %s or change the host port mapping in docker-compose.yml", pStr),
+					})
+				}
 			}
 		}
 	}
@@ -182,6 +233,12 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 
 	reachabilityPassed := true
 	for svcName := range e.Compose.Services {
+		select {
+		case <-ctx.Done():
+			return results
+		default:
+		}
+
 		var matchedContainer *container.Summary
 		for _, c := range containers.Items {
 			cProj := strings.ToLower(c.Labels["com.docker.compose.project"])
