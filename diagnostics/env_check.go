@@ -3,6 +3,7 @@ package diagnostics
 import (
 	"context"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 
@@ -46,8 +47,19 @@ func (e *Engine) extractReferencedEnvVars() []envVarRef {
 	}
 
 	for _, svc := range e.Compose.Services {
-		for _, val := range svc.Environment {
-			parseStr(val)
+		for key, val := range svc.Environment {
+			if val == "" {
+				// Pass-through variable (e.g. - DB_PASSWORD or DB_PASSWORD:)
+				if !seen[key] {
+					seen[key] = true
+					refs = append(refs, envVarRef{
+						name:       key,
+						hasDefault: false,
+					})
+				}
+			} else {
+				parseStr(val)
+			}
 		}
 		for _, port := range svc.Ports {
 			parseStr(port)
@@ -89,6 +101,15 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 
 		val, exists := e.Env[ref.name]
 		if !exists {
+			// Check system environment variable fallback
+			sysVal, sysExists := os.LookupEnv(ref.name)
+			if sysExists {
+				val = sysVal
+				exists = true
+			}
+		}
+
+		if !exists {
 			if ref.hasDefault {
 				continue
 			}
@@ -97,8 +118,8 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 				Group:      "Environmental Alignment",
 				Name:       fmt.Sprintf("Variable %s missing", ref.name),
 				Status:     output.CheckFailed,
-				Error:      fmt.Sprintf("Environment variable %s is referenced in docker-compose.yml but not defined in .env", ref.name),
-				Mitigation: fmt.Sprintf("Add %s=your_value to your .env file", ref.name),
+				Error:      fmt.Sprintf("Environment variable %s is referenced in docker-compose.yml but not defined in .env or host environment", ref.name),
+				Mitigation: fmt.Sprintf("Add %s=your_value to your .env file or export it in your environment", ref.name),
 			})
 		} else if val == "" && !ref.hasDefault {
 			mismatchedTypesPassed = false
@@ -106,8 +127,8 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 				Group:      "Environmental Alignment",
 				Name:       fmt.Sprintf("Variable %s is empty", ref.name),
 				Status:     output.CheckFailed,
-				Error:      fmt.Sprintf("Environment variable %s is defined but empty in .env and has no default fallback in docker-compose.yml", ref.name),
-				Mitigation: fmt.Sprintf("Set a non-empty value for %s in your .env file", ref.name),
+				Error:      fmt.Sprintf("Environment variable %s is defined but empty in .env/host environment and has no default fallback in docker-compose.yml", ref.name),
+				Mitigation: fmt.Sprintf("Set a non-empty value for %s in your .env file or host environment", ref.name),
 			})
 		}
 	}

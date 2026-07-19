@@ -2,6 +2,7 @@ package config
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"strings"
 
@@ -65,6 +66,9 @@ func ParseEnv(path string) (map[string]string, error) {
 			continue
 		}
 		key := strings.TrimSpace(parts[0])
+		if strings.HasPrefix(key, "export ") {
+			key = strings.TrimSpace(strings.TrimPrefix(key, "export "))
+		}
 		val := parseEnvValue(parts[1])
 		env[key] = val
 	}
@@ -99,10 +103,58 @@ func (ss *StringOrSlice) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// ComposePorts represents a YAML field that can be a single string, a list of strings, or list of maps
+type ComposePorts []string
+
+// UnmarshalYAML implements custom decoding for ComposePorts to support long-form ports syntax
+func (cp *ComposePorts) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		var s string
+		if err := value.Decode(&s); err != nil {
+			return err
+		}
+		*cp = []string{s}
+	case yaml.SequenceNode:
+		for _, node := range value.Content {
+			switch node.Kind {
+			case yaml.ScalarNode:
+				var s string
+				if err := node.Decode(&s); err != nil {
+					return err
+				}
+				*cp = append(*cp, s)
+			case yaml.MappingNode:
+				var m struct {
+					Target    interface{} `yaml:"target"`
+					Published interface{} `yaml:"published"`
+					Protocol  string      `yaml:"protocol"`
+					Mode      string      `yaml:"mode"`
+				}
+				if err := node.Decode(&m); err != nil {
+					return err
+				}
+				target := fmt.Sprintf("%v", m.Target)
+				published := fmt.Sprintf("%v", m.Published)
+				proto := m.Protocol
+				if proto == "" {
+					proto = "tcp"
+				}
+				if published != "" && published != "<nil>" {
+					*cp = append(*cp, fmt.Sprintf("%s:%s/%s", published, target, proto))
+				} else {
+					*cp = append(*cp, fmt.Sprintf("%s/%s", target, proto))
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // ComposeService represents a service inside docker-compose.yml
 type ComposeService struct {
 	Environment   ComposeEnvironment `yaml:"environment"`
-	Ports         []string           `yaml:"ports"`
+	Ports         ComposePorts       `yaml:"ports"`
 	Volumes       []ComposeVolume    `yaml:"volumes"`
 	Image         string             `yaml:"image"`
 	ContainerName string             `yaml:"container_name"`
@@ -143,9 +195,10 @@ func (ce *ComposeEnvironment) UnmarshalYAML(value *yaml.Node) error {
 
 // ComposeVolume represents a volume mount configuration
 type ComposeVolume struct {
-	Source string
-	Target string
-	Type   string // "bind" or "volume"
+	Source   string
+	Target   string
+	Type     string // "bind" or "volume"
+	ReadOnly bool
 }
 
 func isWindowsDrivePath(path string) bool {
@@ -174,12 +227,22 @@ func (cv *ComposeVolume) UnmarshalYAML(value *yaml.Node) error {
 			if len(parts) > 2 {
 				cv.Target = parts[2]
 			}
+			if len(parts) > 3 {
+				if parts[3] == "ro" {
+					cv.ReadOnly = true
+				}
+			}
 		} else {
 			if len(parts) > 0 {
 				cv.Source = parts[0]
 			}
 			if len(parts) > 1 {
 				cv.Target = parts[1]
+			}
+			if len(parts) > 2 {
+				if parts[2] == "ro" {
+					cv.ReadOnly = true
+				}
 			}
 		}
 		cv.Type = "bind"
@@ -189,9 +252,10 @@ func (cv *ComposeVolume) UnmarshalYAML(value *yaml.Node) error {
 		}
 	case yaml.MappingNode:
 		var m struct {
-			Type   string `yaml:"type"`
-			Source string `yaml:"source"`
-			Target string `yaml:"target"`
+			Type     string `yaml:"type"`
+			Source   string `yaml:"source"`
+			Target   string `yaml:"target"`
+			ReadOnly bool   `yaml:"read_only"`
 		}
 		if err := value.Decode(&m); err != nil {
 			return err
@@ -199,6 +263,7 @@ func (cv *ComposeVolume) UnmarshalYAML(value *yaml.Node) error {
 		cv.Source = m.Source
 		cv.Target = m.Target
 		cv.Type = m.Type
+		cv.ReadOnly = m.ReadOnly
 		if cv.Type == "" {
 			cv.Type = "bind"
 			if !strings.HasPrefix(cv.Source, "/") && !strings.HasPrefix(cv.Source, "./") && !strings.HasPrefix(cv.Source, "../") && cv.Source != "~" && cv.Source != "." && !isWindowsDrivePath(cv.Source) {
@@ -223,4 +288,70 @@ func ParseCompose(path string) (*ComposeConfig, error) {
 		return nil, err
 	}
 	return &config, nil
+}
+
+// MergeComposeConfigs merges multiple compose configurations from left to right.
+// Latter configurations override or append to earlier ones according to Docker Compose rules.
+func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
+	merged := &ComposeConfig{
+		Services: make(map[string]ComposeService),
+		Volumes:  make(map[string]interface{}),
+	}
+
+	for _, config := range configs {
+		if config == nil {
+			continue
+		}
+
+		// Merge Services
+		for svcName, srcSvc := range config.Services {
+			destSvc, exists := merged.Services[svcName]
+			if !exists {
+				// Simply insert
+				merged.Services[svcName] = srcSvc
+				continue
+			}
+
+			// Merge service fields
+			// Image: latter overrides former if not empty
+			if srcSvc.Image != "" {
+				destSvc.Image = srcSvc.Image
+			}
+			// ContainerName: latter overrides former if not empty
+			if srcSvc.ContainerName != "" {
+				destSvc.ContainerName = srcSvc.ContainerName
+			}
+			// Entrypoint: latter overrides former if defined
+			if len(srcSvc.Entrypoint) > 0 {
+				destSvc.Entrypoint = srcSvc.Entrypoint
+			}
+			// Command: latter overrides former if defined
+			if len(srcSvc.Command) > 0 {
+				destSvc.Command = srcSvc.Command
+			}
+
+			// Environment: merge keys, latter overrides former
+			if destSvc.Environment == nil {
+				destSvc.Environment = make(ComposeEnvironment)
+			}
+			for k, v := range srcSvc.Environment {
+				destSvc.Environment[k] = v
+			}
+
+			// Ports: append lists
+			destSvc.Ports = append(destSvc.Ports, srcSvc.Ports...)
+
+			// Volumes: append lists
+			destSvc.Volumes = append(destSvc.Volumes, srcSvc.Volumes...)
+
+			merged.Services[svcName] = destSvc
+		}
+
+		// Merge root-level Volumes
+		for volName, volDef := range config.Volumes {
+			merged.Volumes[volName] = volDef
+		}
+	}
+
+	return merged
 }

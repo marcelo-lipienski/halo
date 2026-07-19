@@ -32,10 +32,18 @@ func (e *Engine) resolveEnvVars(s string) string {
 			varName = sub[3]
 		}
 
-		if val, ok := e.Env[varName]; ok {
-			return val
+		// Check if it's the :- format (meaning fallback if unset OR empty)
+		isUnsetOrEmptyFallback := strings.Contains(match, ":-")
+
+		val, ok := e.Env[varName]
+		if !ok {
+			val, ok = os.LookupEnv(varName)
 		}
-		if val, ok := os.LookupEnv(varName); ok {
+
+		if ok {
+			if val == "" && isUnsetOrEmptyFallback {
+				return fallback
+			}
 			return val
 		}
 		return fallback

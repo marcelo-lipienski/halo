@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 	"github.com/marcelo-lipienski/halo/diagnostics"
 	"github.com/marcelo-lipienski/halo/output"
 	"github.com/moby/moby/client"
+	"github.com/spf13/cobra"
 )
 
 // Version information injected during build via ldflags
@@ -27,71 +27,59 @@ func printVersion() {
 	fmt.Printf("Go runtime:  %s (%s/%s)\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }
 
+var (
+	configDir    string
+	envFile      string
+	composeFiles []string
+	format       string
+	verbose      bool
+)
+
 func main() {
-	var configDir string
-	var envFile string
-	var composeFile string
-	var format string
-	var verbose bool
-
-	fs := flag.NewFlagSet("halo", flag.ExitOnError)
-	fs.StringVar(&configDir, "config-dir", ".", "Path to the directory containing local configuration files")
-	fs.StringVar(&configDir, "c", ".", "Path to the directory containing local configuration files (shorthand)")
-	fs.StringVar(&envFile, "env-file", "", "Explicit path to the .env file")
-	fs.StringVar(&envFile, "e", "", "Explicit path to the .env file (shorthand)")
-	fs.StringVar(&composeFile, "compose-file", "", "Explicit path to the docker-compose.yml file")
-	fs.StringVar(&format, "format", "text", "Output format for results (text|json)")
-	fs.StringVar(&format, "f", "text", "Output format for results (text|json) (shorthand)")
-	fs.BoolVar(&verbose, "verbose", false, "Enables debug logging")
-	fs.BoolVar(&verbose, "v", false, "Enables debug logging (shorthand)")
-
-	args := os.Args[1:]
-
-	command := ""
-	var flagArgs []string
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "check" || arg == "version" {
-			if command == "" {
-				command = arg
-				continue
-			}
-		}
-		// If it's a flag that takes an argument, consume the flag and its value
-		if (arg == "-c" || arg == "--config-dir" || arg == "-e" || arg == "--env-file" || arg == "--compose-file" || arg == "-f" || arg == "--format") && i+1 < len(args) {
-			flagArgs = append(flagArgs, arg, args[i+1])
-			i++
-			continue
-		}
-		flagArgs = append(flagArgs, arg)
+	rootCmd := &cobra.Command{
+		Use:   "halo",
+		Short: "halo diagnoses local development environments",
+		Long:  `halo is a lightweight CLI tool to diagnose and validate local development environments by analyzing environment configurations and active Docker state.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			// By default, running the root command executes the diagnostics checks (equivalent to "check" subcommand)
+			runCheck()
+		},
 	}
 
-	if err := fs.Parse(flagArgs); err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
-		os.Exit(1)
+	// Define persistent flags
+	rootCmd.PersistentFlags().StringVarP(&configDir, "config-dir", "c", ".", "Path to the directory containing local configuration files")
+	rootCmd.PersistentFlags().StringVarP(&envFile, "env-file", "e", "", "Explicit path to the .env file")
+	rootCmd.PersistentFlags().StringSliceVar(&composeFiles, "compose-file", []string{}, "Explicit path(s) to the docker-compose.yml file (can specify multiple times)")
+	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "text", "Output format for results (text|json)")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enables debug logging")
+
+	// check subcommand
+	checkCmd := &cobra.Command{
+		Use:   "check",
+		Short: "Run the diagnostic suite",
+		Run: func(cmd *cobra.Command, args []string) {
+			runCheck()
+		},
 	}
 
-	if command == "" {
-		command = "check"
+	// version subcommand
+	versionCmd := &cobra.Command{
+		Use:   "version",
+		Short: "Show version information",
+		Run: func(cmd *cobra.Command, args []string) {
+			printVersion()
+		},
 	}
 
-	switch command {
-	case "version":
-		printVersion()
-		os.Exit(0)
-	case "check":
-		runCheck(configDir, envFile, composeFile, format, verbose)
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
-		fmt.Fprintln(os.Stderr, "Usage: halo [command] [flags]")
-		fmt.Fprintln(os.Stderr, "Commands:")
-		fmt.Fprintln(os.Stderr, "  check     Run diagnostic suite (default)")
-		fmt.Fprintln(os.Stderr, "  version   Show version information")
+	rootCmd.AddCommand(checkCmd)
+	rootCmd.AddCommand(versionCmd)
+
+	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
-func runCheck(configDir, envFile, composeFile, format string, verbose bool) {
+func runCheck() {
 	format = strings.ToLower(format)
 	if format != "text" && format != "json" {
 		fmt.Fprintf(os.Stderr, "Invalid format: %s. Supported formats: text, json\n", format)
@@ -106,29 +94,48 @@ func runCheck(configDir, envFile, composeFile, format string, verbose bool) {
 		envPath = filepath.Join(configDir, ".env")
 	}
 
-	composePath := composeFile
-	if composePath == "" {
+	// Determine compose files to load
+	var filesToLoad []string
+	if len(composeFiles) > 0 {
+		filesToLoad = composeFiles
+	} else {
+		// Automatic detection: check docker-compose.yml or docker-compose.yaml
 		composePathYml := filepath.Join(configDir, "docker-compose.yml")
 		composePathYaml := filepath.Join(configDir, "docker-compose.yaml")
-		composePath = composePathYml
+		composePath := composePathYml
 		if _, err := os.Stat(composePathYaml); err == nil {
 			composePath = composePathYaml
 		}
+		filesToLoad = append(filesToLoad, composePath)
+
+		// Check for automatic override file: docker-compose.override.yml or docker-compose.override.yaml
+		overridePathYml := filepath.Join(configDir, "docker-compose.override.yml")
+		overridePathYaml := filepath.Join(configDir, "docker-compose.override.yaml")
+		if _, err := os.Stat(overridePathYml); err == nil {
+			filesToLoad = append(filesToLoad, overridePathYml)
+		} else if _, err := os.Stat(overridePathYaml); err == nil {
+			filesToLoad = append(filesToLoad, overridePathYaml)
+		}
 	}
 
-	_, composeStatErr := os.Stat(composePath)
+	// Stat check for all configuration files
 	_, envStatErr := os.Stat(envPath)
+	var missing []string
+	if os.IsNotExist(envStatErr) {
+		missing = append(missing, filepath.Base(envPath))
+	}
 
-	if os.IsNotExist(composeStatErr) || os.IsNotExist(envStatErr) {
-		var missing []string
-		if os.IsNotExist(envStatErr) {
-			missing = append(missing, filepath.Base(envPath))
+	var parsedConfigs []*config.ComposeConfig
+	for _, file := range filesToLoad {
+		_, err := os.Stat(file)
+		if os.IsNotExist(err) {
+			missing = append(missing, filepath.Base(file))
 		}
-		if os.IsNotExist(composeStatErr) {
-			missing = append(missing, filepath.Base(composePath))
-		}
+	}
+
+	if len(missing) > 0 {
 		errStr := fmt.Sprintf("Missing configuration files: %s must exist.", strings.Join(missing, " and "))
-		mitigationStr := fmt.Sprintf("Ensure both your .env file and docker-compose.yml file are present at their specified paths (%s and %s).", envPath, composePath)
+		mitigationStr := fmt.Sprintf("Ensure your .env file and all specified docker-compose files are present at their specified paths.")
 		exitWithSystemFailure(format, errStr, mitigationStr)
 	}
 
@@ -137,10 +144,16 @@ func runCheck(configDir, envFile, composeFile, format string, verbose bool) {
 		exitWithSystemFailure(format, fmt.Sprintf("Failed to parse .env file: %v", err), "Check .env format for syntax errors.")
 	}
 
-	comp, err := config.ParseCompose(composePath)
-	if err != nil {
-		exitWithSystemFailure(format, fmt.Sprintf("Failed to parse docker-compose file: %v", err), "Verify docker-compose.yml syntax is valid YAML.")
+	for _, file := range filesToLoad {
+		comp, err := config.ParseCompose(file)
+		if err != nil {
+			exitWithSystemFailure(format, fmt.Sprintf("Failed to parse docker-compose file (%s): %v", filepath.Base(file), err), fmt.Sprintf("Verify %s syntax is valid YAML.", filepath.Base(file)))
+		}
+		parsedConfigs = append(parsedConfigs, comp)
 	}
+
+	// Merge all parsed configs according to docker-compose overrides rules
+	mergedComp := config.MergeComposeConfigs(parsedConfigs...)
 
 	dockerCli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -155,8 +168,8 @@ func runCheck(configDir, envFile, composeFile, format string, verbose bool) {
 		exitWithSystemFailure(format, fmt.Sprintf("Docker daemon is unreachable: %v", err), "Ensure Docker daemon/service is running and socket is accessible.")
 	}
 
-	engineConfigDir := filepath.Dir(composePath)
-	engine := diagnostics.NewEngine(engineConfigDir, composePath, env, comp, dockerCli)
+	engineConfigDir := filepath.Dir(filesToLoad[0])
+	engine := diagnostics.NewEngine(engineConfigDir, filesToLoad[0], env, mergedComp, dockerCli)
 	report := engine.Run(ctx)
 
 	if format == "json" {

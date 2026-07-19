@@ -205,3 +205,162 @@ services:
 		t.Errorf("unexpected volume 1: %+v", web.Volumes[1])
 	}
 }
+
+func TestParseEnvWithExport(t *testing.T) {
+	tempDir := t.TempDir()
+	envPath := filepath.Join(tempDir, ".env")
+	envContent := `
+export DB_HOST=localhost
+export DB_PORT=5432
+DB_USER=postgres
+`
+	if err := os.WriteFile(envPath, []byte(envContent), 0644); err != nil {
+		t.Fatalf("failed to write temp env file: %v", err)
+	}
+
+	expected := map[string]string{
+		"DB_HOST": "localhost",
+		"DB_PORT": "5432",
+		"DB_USER": "postgres",
+	}
+
+	result, err := ParseEnv(envPath)
+	if err != nil {
+		t.Fatalf("unexpected error parsing env: %v", err)
+	}
+
+	if !reflect.DeepEqual(result, expected) {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
+func TestStructuredPortsParsingAndReadOnlyVolumes(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web:
+    ports:
+      - target: 80
+        published: 8080
+        protocol: tcp
+        mode: host
+      - "443:443"
+    volumes:
+      - ./data:/var/data:ro
+      - type: bind
+        source: ./config
+        target: /app/config
+        read_only: true
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose file: %v", err)
+	}
+
+	config, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("unexpected error parsing compose: %v", err)
+	}
+
+	web, ok := config.Services["web"]
+	if !ok {
+		t.Fatal("web service not found")
+	}
+
+	expectedPorts := ComposePorts{"8080:80/tcp", "443:443"}
+	if !reflect.DeepEqual(web.Ports, expectedPorts) {
+		t.Errorf("expected ports %v, got %v", expectedPorts, web.Ports)
+	}
+
+	if len(web.Volumes) != 2 {
+		t.Fatalf("expected 2 volumes, got %d", len(web.Volumes))
+	}
+
+	if !web.Volumes[0].ReadOnly || web.Volumes[0].Source != "./data" {
+		t.Errorf("expected volume 0 to be read-only, got %+v", web.Volumes[0])
+	}
+
+	if !web.Volumes[1].ReadOnly || web.Volumes[1].Source != "./config" {
+		t.Errorf("expected volume 1 to be read-only, got %+v", web.Volumes[1])
+	}
+}
+
+func TestMergeComposeConfigs(t *testing.T) {
+	cfg1 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				Image: "nginx:latest",
+				Environment: ComposeEnvironment{
+					"PORT": "80",
+					"DEBUG": "true",
+				},
+				Ports: ComposePorts{"80:80"},
+				Volumes: []ComposeVolume{
+					{Source: "./data", Target: "/data", Type: "bind"},
+				},
+			},
+		},
+		Volumes: map[string]interface{}{
+			"shared-data": nil,
+		},
+	}
+
+	cfg2 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				Image: "nginx:alpine",
+				Environment: ComposeEnvironment{
+					"DEBUG": "false",
+					"NEW_VAR": "value",
+				},
+				Ports: ComposePorts{"443:443"},
+				Volumes: []ComposeVolume{
+					{Source: "./config", Target: "/config", Type: "bind"},
+				},
+			},
+			"db": {
+				Image: "postgres:latest",
+			},
+		},
+		Volumes: map[string]interface{}{
+			"db-data": nil,
+		},
+	}
+
+	merged := MergeComposeConfigs(cfg1, cfg2)
+
+	web := merged.Services["web"]
+	if web.Image != "nginx:alpine" {
+		t.Errorf("expected image nginx:alpine, got %s", web.Image)
+	}
+
+	expectedEnv := ComposeEnvironment{
+		"PORT":    "80",
+		"DEBUG":   "false",
+		"NEW_VAR": "value",
+	}
+	if !reflect.DeepEqual(web.Environment, expectedEnv) {
+		t.Errorf("expected environment %v, got %v", expectedEnv, web.Environment)
+	}
+
+	expectedPorts := ComposePorts{"80:80", "443:443"}
+	if !reflect.DeepEqual(web.Ports, expectedPorts) {
+		t.Errorf("expected ports %v, got %v", expectedPorts, web.Ports)
+	}
+
+	if len(web.Volumes) != 2 {
+		t.Errorf("expected 2 volumes, got %d", len(web.Volumes))
+	}
+
+	if _, ok := merged.Services["db"]; !ok {
+		t.Error("expected db service to be merged in")
+	}
+
+	if _, ok := merged.Volumes["shared-data"]; !ok {
+		t.Error("expected shared-data root volume to exist")
+	}
+	if _, ok := merged.Volumes["db-data"]; !ok {
+		t.Error("expected db-data root volume to exist")
+	}
+}
+

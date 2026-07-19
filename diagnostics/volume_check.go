@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/marcelo-lipienski/halo/output"
@@ -81,6 +82,28 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				continue
 			}
 
+			// Cross-platform OS path conventions warning
+			isWindowsPath := false
+			if len(vol.Source) >= 2 {
+				drive := vol.Source[0]
+				isLetter := (drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z')
+				if (isLetter && vol.Source[1] == ':') || strings.Contains(vol.Source, "\\") {
+					isWindowsPath = true
+				}
+			}
+
+			if runtime.GOOS != "windows" && isWindowsPath {
+				volumeCheckPassed = false
+				results = append(results, output.CheckResult{
+					Group:      "Volume & File Permissions",
+					Name:       fmt.Sprintf("Incompatible OS Path: %s", vol.Source),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("Bind-mount host path '%s' for service %s uses Windows path conventions on a non-Windows OS.", vol.Source, svcName),
+					Mitigation: "Convert the path mapping in docker-compose.yml to use relative Unix paths (e.g., ./data instead of C:\\data).",
+				})
+				continue
+			}
+
 			resolvedSource := e.resolveEnvVars(vol.Source)
 			if resolvedSource == "" {
 				continue
@@ -109,12 +132,23 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 			info, err := os.Stat(hostPath)
 			if os.IsNotExist(err) {
 				volumeCheckPassed = false
+
+				// Check if the source is likely a file
+				base := filepath.Base(hostPath)
+				ext := filepath.Ext(hostPath)
+				isLikelyFile := ext != "" || base == ".env" || base == ".gitignore" || base == "Dockerfile"
+
+				mitigation := fmt.Sprintf("Run: mkdir -p %s && chmod -R 775 %s", hostPath, hostPath)
+				if isLikelyFile {
+					mitigation = fmt.Sprintf("Run: touch %s && chmod 664 %s", hostPath, hostPath)
+				}
+
 				results = append(results, output.CheckResult{
 					Group:      "Volume & File Permissions",
 					Name:       fmt.Sprintf("Volume source missing: %s", vol.Source),
 					Status:     output.CheckFailed,
 					Error:      fmt.Sprintf("Bind-mount host path '%s' for service %s does not exist. Docker auto-creation can lead to write permission lockouts (root ownership).", hostPath, svcName),
-					Mitigation: fmt.Sprintf("Run: mkdir -p %s && chmod -R 775 %s", hostPath, hostPath),
+					Mitigation: mitigation,
 				})
 				continue
 			} else if err != nil {
@@ -149,24 +183,27 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				})
 			}
 
-			writable, wErr := isWritable(hostPath)
-			if !writable || wErr != nil {
-				volumeCheckPassed = false
-				pathType := "Directory"
-				if !info.IsDir() {
-					pathType = "File"
+			// Only validate write permissions if the volume is NOT read-only
+			if !vol.ReadOnly {
+				writable, wErr := isWritable(hostPath)
+				if !writable || wErr != nil {
+					volumeCheckPassed = false
+					pathType := "Directory"
+					if !info.IsDir() {
+						pathType = "File"
+					}
+					errStr := fmt.Sprintf("%s '%s' for service %s is not writable by current host user.", pathType, hostPath, svcName)
+					if wErr != nil {
+						errStr = fmt.Sprintf("%s '%s' for service %s is not writable by current host user. System error: %v", pathType, hostPath, svcName, wErr)
+					}
+					results = append(results, output.CheckResult{
+						Group:      "Volume & File Permissions",
+						Name:       fmt.Sprintf("Volume permission lockout: %s", vol.Source),
+						Status:     output.CheckFailed,
+						Error:      errStr,
+						Mitigation: fmt.Sprintf("Run: chmod -R u+rw %s or sudo chown -R $USER %s", hostPath, hostPath),
+					})
 				}
-				errStr := fmt.Sprintf("%s '%s' for service %s is not writable by current host user.", pathType, hostPath, svcName)
-				if wErr != nil {
-					errStr = fmt.Sprintf("%s '%s' for service %s is not writable by current host user. System error: %v", pathType, hostPath, svcName, wErr)
-				}
-				results = append(results, output.CheckResult{
-					Group:      "Volume & File Permissions",
-					Name:       fmt.Sprintf("Volume permission lockout: %s", vol.Source),
-					Status:     output.CheckFailed,
-					Error:      errStr,
-					Mitigation: fmt.Sprintf("Run: chmod -R u+rw %s or sudo chown -R $USER %s", hostPath, hostPath),
-				})
 			}
 		}
 	}

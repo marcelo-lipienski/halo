@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -738,3 +739,190 @@ services:
 		}
 	}
 }
+
+func TestEngineReadOnlyVolumeSkipWriteCheck(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Write a mock compose file with a read-only bind volume
+	composeContent := `
+services:
+  app:
+    volumes:
+      - ./readonly_dir:/app/readonly:ro
+`
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	// Create the readonly directory with read-only permissions (non-writable)
+	readonlyPath := filepath.Join(tempDir, "readonly_dir")
+	if err := os.Mkdir(readonlyPath, 0555); err != nil {
+		t.Fatalf("failed to create readonly dir: %v", err)
+	}
+	defer os.Chmod(readonlyPath, 0755) // restore so cleanup succeeds
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	projName := filepath.Base(tempDir)
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{
+				Items: []container.Summary{
+					{
+						ID:    "mock-id",
+						State: "running",
+						Labels: map[string]string{
+							"com.docker.compose.project": projName,
+							"com.docker.compose.service": "app",
+						},
+					},
+				},
+			}, nil
+		},
+		inspectFunc: func(ctx context.Context, containerID string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+			return client.ContainerInspectResult{
+				Container: container.InspectResponse{
+					State: &container.State{
+						Running: true,
+						Health:  nil,
+					},
+				},
+			}, nil
+		},
+	}
+
+	engine := NewEngine(tempDir, composePath, nil, comp, mockDocker)
+	report := engine.Run(context.Background())
+
+	// Since the volume is marked read-only, it should skip the write permission check and pass
+	foundWriteLockout := false
+	for _, check := range report.Checks {
+		if check.Group == "Volume & File Permissions" && check.Status == output.CheckFailed {
+			if strings.Contains(check.Name, "Volume permission lockout") {
+				foundWriteLockout = true
+				t.Logf("Failed check unexpectedly: Name=%s, Error=%s", check.Name, check.Error)
+			}
+		}
+	}
+
+	if foundWriteLockout {
+		t.Error("expected write permission check to be skipped for read-only volume, but it failed")
+	}
+
+	if report.Status == output.StatusEnvironmentBroken && os.Getuid() != 0 {
+		t.Errorf("expected engine status healthy, got environment_broken: %+v", report)
+	}
+}
+
+func TestEngineHostEnvFallbackInAlignment(t *testing.T) {
+	tempDir := t.TempDir()
+
+	composeContent := `
+services:
+  app:
+    environment:
+      - PORT=${HOST_PORT}
+`
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	// Set HOST_PORT in the system environment
+	os.Setenv("HOST_PORT", "9090")
+	defer os.Unsetenv("HOST_PORT")
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	// Engine environment has NO HOST_PORT defined in e.Env map
+	engine := NewEngine(tempDir, composePath, map[string]string{}, comp, &mockDockerClient{})
+	report := engine.Run(context.Background())
+
+	// Alignment check should search system env, find it, and pass
+	foundMissing := false
+	for _, check := range report.Checks {
+		if check.Group == "Environmental Alignment" && check.Status == output.CheckFailed {
+			foundMissing = true
+			t.Logf("Failed check: Name=%s, Error=%s", check.Name, check.Error)
+		}
+	}
+
+	if foundMissing {
+		t.Error("expected host environment fallback to pass variables check, but it failed")
+	}
+}
+
+func TestEngineEmptyVariableDefaults(t *testing.T) {
+	tempDir := t.TempDir()
+
+	composeContent := `
+services:
+  app:
+    environment:
+      - PORT=${APP_PORT:-8080}
+`
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	// APP_PORT is defined but empty in Env
+	env := map[string]string{
+		"APP_PORT": "",
+	}
+
+	engine := NewEngine(tempDir, composePath, env, comp, &mockDockerClient{})
+	resolved := engine.resolveEnvVars("${APP_PORT:-8080}")
+	if resolved != "8080" {
+		t.Errorf("expected empty variable to fall back to '8080', got '%s'", resolved)
+	}
+}
+
+func TestEngineWindowsPathWarningOnUnix(t *testing.T) {
+	tempDir := t.TempDir()
+
+	composeContent := `
+services:
+  app:
+    volumes:
+      - C:\host\data:/app/data
+`
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	engine := NewEngine(tempDir, composePath, nil, comp, &mockDockerClient{})
+	report := engine.Run(context.Background())
+
+	if runtime.GOOS != "windows" {
+		foundWarning := false
+		for _, check := range report.Checks {
+			if check.Group == "Volume & File Permissions" && strings.Contains(check.Name, "Incompatible OS Path") {
+				foundWarning = true
+				break
+			}
+		}
+		if !foundWarning {
+			t.Error("expected to find Windows path conventions warning on non-Windows system")
+		}
+	}
+}
+
