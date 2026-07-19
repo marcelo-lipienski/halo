@@ -84,18 +84,26 @@ func (e *Engine) checkReadPermission(results []output.CheckResult, hostPath, vol
 	}
 
 	if e.AutoFix {
-		mode := os.FileMode(0755)
+		originalMode := info.Mode()
+		newMode := os.FileMode(0755)
 		if !info.IsDir() {
-			mode = 0644
+			newMode = 0644
 		}
-		if chmodErr := os.Chmod(hostPath, mode); chmodErr == nil {
-			if r, _ := isReadable(hostPath); r {
+		if chmodErr := os.Chmod(hostPath, newMode); chmodErr == nil {
+			// Re-verify after chmod — chmod may succeed but the path could still be
+			// unreadable if the current user does not own it (e.g. root-owned volume).
+			if r, reVerifyErr := isReadable(hostPath); r && reVerifyErr == nil {
 				results = append(results, output.CheckResult{
 					Group:  "Volume & File Permissions",
 					Name:   fmt.Sprintf("Volume read lockout auto-fixed: %s", volSource),
 					Status: output.CheckPassed,
+					Error:  fmt.Sprintf("Original permissions: %s, applied: %s", originalMode, newMode),
 				})
 				return results, true
+			} else {
+				// chmod syscall succeeded but readability still fails — update rErr
+				// to reflect the current state rather than the pre-chmod error.
+				rErr = reVerifyErr
 			}
 		}
 	}
