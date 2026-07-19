@@ -257,8 +257,6 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 		return results
 	}
 
-	reachabilityPassed := true
-	warned := 0 // tracks non-fatal health warnings (e.g. "starting" state)
 	for _, svcName := range svcNames {
 		select {
 		case <-ctx.Done():
@@ -286,7 +284,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 		if matchedContainer == nil {
 			results = append(results, output.CheckResult{
 				Group:      "Network & Port Availability",
-				Name:       fmt.Sprintf("Service %s unreachable", svcName),
+				Name:       fmt.Sprintf("Service %s reachability", svcName),
 				Status:     output.CheckWarning,
 				Error:      fmt.Sprintf("No container found for service %s in project %s", svcName, projectName),
 				Mitigation: fmt.Sprintf("Run: docker compose up -d %s", svcName),
@@ -296,96 +294,81 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 
 		inspect, err := e.DockerCli.ContainerInspect(ctx, matchedContainer.ID, client.ContainerInspectOptions{})
 		if err != nil {
-			if matchedContainer.State != "running" {
-				reachabilityPassed = false
-				results = append(results, output.CheckResult{
-					Group:      "Network & Port Availability",
-					Name:       fmt.Sprintf("Service %s is %s", svcName, matchedContainer.State),
-					Status:     output.CheckFailed,
-					Error:      fmt.Sprintf("Container for service %s is in state '%s' instead of 'running' (inspect failed)", svcName, matchedContainer.State),
-					Mitigation: fmt.Sprintf("Run: docker compose start %s or check logs: docker compose logs %s", svcName, svcName),
-				})
-			}
+			results = append(results, output.CheckResult{
+				Group:      "Network & Port Availability",
+				Name:       fmt.Sprintf("Service %s reachability", svcName),
+				Status:     output.CheckFailed,
+				Error:      fmt.Sprintf("Failed to inspect container for service %s: %v", svcName, err),
+				Mitigation: fmt.Sprintf("Run: docker compose start %s or check logs: docker compose logs %s", svcName, svcName),
+			})
 			continue
 		}
 
 		if inspect.Container.State == nil || !inspect.Container.State.Running {
-			reachabilityPassed = false
 			startError := ""
 			if inspect.Container.State != nil {
 				startError = inspect.Container.State.Error
 			}
 
+			var res output.CheckResult
+			res.Group = "Network & Port Availability"
+			res.Name = fmt.Sprintf("Service %s reachability", svcName)
+			res.Status = output.CheckFailed
+
 			if isPortBindError(startError) {
 				if servicesWithCollisions[svcName] {
-					results = append(results, output.CheckResult{
-						Group:      "Network & Port Availability",
-						Name:       fmt.Sprintf("Service %s failed to start", svcName),
-						Status:     output.CheckFailed,
-						Error:      fmt.Sprintf("Container failed to start due to host port collision. Docker error: %s", startError),
-						Mitigation: fmt.Sprintf("Stop the process occupying the port or change the host port mapping, then restart the service: docker compose up -d %s", svcName),
-					})
+					res.Error = fmt.Sprintf("Container failed to start due to host port collision. Docker error: %s", startError)
+					res.Mitigation = fmt.Sprintf("Stop the process occupying the port or change the host port mapping, then restart the service: docker compose up -d %s", svcName)
 				} else {
-					results = append(results, output.CheckResult{
-						Group:      "Network & Port Availability",
-						Name:       fmt.Sprintf("Service %s failed to start", svcName),
-						Status:     output.CheckFailed,
-						Error:      fmt.Sprintf("Container failed to start due to a previous port collision, but the port is now available. Docker error: %s", startError),
-						Mitigation: fmt.Sprintf("Simply restart the service: docker compose up -d %s", svcName),
-					})
+					res.Error = fmt.Sprintf("Container failed to start due to a previous port collision, but the port is now available. Docker error: %s", startError)
+					res.Mitigation = fmt.Sprintf("Simply restart the service: docker compose up -d %s", svcName)
 				}
 			} else {
 				stateStr := string(matchedContainer.State)
 				if inspect.Container.State != nil {
 					stateStr = string(inspect.Container.State.Status)
 				}
-				results = append(results, output.CheckResult{
-					Group:      "Network & Port Availability",
-					Name:       fmt.Sprintf("Service %s is %s", svcName, stateStr),
-					Status:     output.CheckFailed,
-					Error:      fmt.Sprintf("Container for service %s is in state '%s' instead of 'running'", svcName, stateStr),
-					Mitigation: fmt.Sprintf("Run: docker compose start %s or check logs: docker compose logs %s", svcName, svcName),
-				})
+				res.Error = fmt.Sprintf("Container for service %s is in state '%s' instead of 'running'", svcName, stateStr)
+				res.Mitigation = fmt.Sprintf("Run: docker compose start %s or check logs: docker compose logs %s", svcName, svcName)
 			}
+			results = append(results, res)
 			continue
 		}
 
+		hasUnhealthyOrStarting := false
 		if inspect.Container.State != nil && inspect.Container.State.Health != nil {
 			healthStatus := string(inspect.Container.State.Health.Status)
 			switch healthStatus {
 			case "healthy":
-				// All good — no result entry needed.
+				// All good — falls through to passed check.
 			case "starting":
-				// The container is running but the health check has not completed its
-				// first probe yet. This is expected immediately after startup and is
-				// not an actionable failure.
-				warned++
+				hasUnhealthyOrStarting = true
 				results = append(results, output.CheckResult{
 					Group:      "Network & Port Availability",
-					Name:       fmt.Sprintf("Service %s health is starting", svcName),
+					Name:       fmt.Sprintf("Service %s reachability", svcName),
 					Status:     output.CheckWarning,
 					Error:      fmt.Sprintf("Container for service %s is running but health check is still initialising", svcName),
 					Mitigation: fmt.Sprintf("Wait a few seconds, then re-run halo check. To inspect: docker inspect --format='{{json .State.Health}}' %s", matchedContainer.ID),
 				})
 			default:
-				reachabilityPassed = false
+				hasUnhealthyOrStarting = true
 				results = append(results, output.CheckResult{
 					Group:      "Network & Port Availability",
-					Name:       fmt.Sprintf("Service %s health is %s", svcName, healthStatus),
+					Name:       fmt.Sprintf("Service %s reachability", svcName),
 					Status:     output.CheckFailed,
 					Error:      fmt.Sprintf("Container for service %s passed running check but health state is '%s'", svcName, healthStatus),
 					Mitigation: fmt.Sprintf("Check service health: docker inspect --format='{{json .State.Health}}' %s", matchedContainer.ID),
 				})
 			}
 		}
-	}
 
-	if reachabilityPassed {
-		results = append(results, output.CheckResult{
-			Group:  "Network & Port Availability",
-			Name:   "Service Reachability Check",
-			Status: output.CheckPassed,
-		})
+		if !hasUnhealthyOrStarting {
+			results = append(results, output.CheckResult{
+				Group:  "Network & Port Availability",
+				Name:   fmt.Sprintf("Service %s reachability", svcName),
+				Status: output.CheckPassed,
+			})
+		}
 	}
 
 	return results
