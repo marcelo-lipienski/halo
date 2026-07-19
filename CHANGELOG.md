@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-07-19
+
+### Fixed
+- Clean version command: omit the `(unknown)` commit suffix if it cannot be resolved at runtime (e.g., when compiling via remote `go install`), and support parsing commit hashes from Go pseudo-versions.
+
 ## [0.2.2] — 2026-07-19
 
 ### Fixed
@@ -68,7 +73,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Mitigation strings use `docker compose` (modern CLI) instead of the deprecated `docker-compose`.
 - `exitWithSystemFailure` now respects the `--verbose` flag consistently.
 
-[Unreleased]: https://github.com/marcelo-lipienski/halo/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/marcelo-lipienski/halo/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/marcelo-lipienski/halo/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/marcelo-lipienski/halo/compare/v0.2.0...v0.2.2
 [0.2.0]: https://github.com/marcelo-lipienski/halo/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/marcelo-lipienski/halo/compare/v0.1.0-beta.1...v0.1.0
