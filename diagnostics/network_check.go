@@ -15,40 +15,11 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// resolveEnvVars expands environment variables like ${PORT:-80} or $PORT using e.Env and system Env
+// resolveEnvVars expands shell parameter expressions in s using the .env map
+// and host OS environment. It delegates to resolveShellExpr for full shell-spec
+// compliance including ${VAR:-default} and ${VAR:?error} forms.
 func (e *Engine) resolveEnvVars(s string) string {
-	return envVarRegex.ReplaceAllStringFunc(s, func(match string) string {
-		sub := envVarRegex.FindStringSubmatch(match)
-		if len(sub) == 0 {
-			return match
-		}
-		varName := ""
-		fallback := ""
-		if len(sub) > 1 && sub[1] != "" {
-			varName = sub[1]
-			if len(sub) > 2 {
-				fallback = sub[2]
-			}
-		} else if len(sub) > 3 && sub[3] != "" {
-			varName = sub[3]
-		}
-
-		// Check if it's the :- format (meaning fallback if unset OR empty)
-		isUnsetOrEmptyFallback := strings.Contains(match, ":-")
-
-		val, ok := os.LookupEnv(varName)
-		if !ok {
-			val, ok = e.Env[varName]
-		}
-
-		if ok {
-			if val == "" && isUnsetOrEmptyFallback {
-				return fallback
-			}
-			return val
-		}
-		return fallback
-	})
+	return resolveShellExpr(s, e.Env)
 }
 
 func parseHostPortProto(p string) (string, string) {
