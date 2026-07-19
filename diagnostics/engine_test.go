@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/client"
 	"github.com/marcelo-lipienski/halo/config"
 	"github.com/marcelo-lipienski/halo/output"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 type mockDockerClient struct {
@@ -535,6 +535,206 @@ services:
 			if check.Status == output.CheckFailed {
 				t.Logf("Failed check: Name=%s, Group=%s, Error=%s, Mitigation=%s", check.Name, check.Group, check.Error, check.Mitigation)
 			}
+		}
+	}
+}
+
+func TestEnginePortRangeCollision(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Occupy a port in the range
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen on local port: %v", err)
+	}
+	defer l.Close()
+
+	_, portStr, _ := net.SplitHostPort(l.Addr().String())
+	portVal, _ := strconv.Atoi(portStr)
+
+	// We map a range of [portVal-1, portVal+1] so that portVal is inside the range
+	startPort := portVal - 1
+	endPort := portVal + 1
+
+	composeContent := fmt.Sprintf(`
+services:
+  web:
+    ports:
+      - "%d-%d:80-82"
+`, startPort, endPort)
+
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{Items: []container.Summary{}}, nil
+		},
+		inspectFunc: func(ctx context.Context, containerID string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+			return client.ContainerInspectResult{}, fmt.Errorf("not found")
+		},
+	}
+
+	engine := NewEngine(tempDir, composePath, nil, comp, mockDocker)
+	report := engine.Run(context.Background())
+
+	if report.Status != output.StatusEnvironmentBroken {
+		t.Errorf("expected environment_broken status due to range collision, got: %s", report.Status)
+	}
+
+	foundCollision := false
+	expectedName := fmt.Sprintf("Port Collision web:%d", portVal)
+	for _, check := range report.Checks {
+		if check.Status == output.CheckFailed && check.Group == "Network & Port Availability" && check.Name == expectedName {
+			foundCollision = true
+			break
+		}
+	}
+
+	if !foundCollision {
+		t.Errorf("expected to find port collision error for %s", expectedName)
+		for _, check := range report.Checks {
+			if check.Status == output.CheckFailed {
+				t.Logf("Failed check: Name=%s, Group=%s, Error=%s", check.Name, check.Group, check.Error)
+			}
+		}
+	}
+}
+
+func TestEngineVolumeTildeExpansion(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Override HOME environment variable
+	oldHome := os.Getenv("HOME")
+	defer os.Setenv("HOME", oldHome)
+	os.Setenv("HOME", tempDir)
+
+	// Create a subdirectory inside tempDir to act as the expanded folder
+	subDirName := "mock_volume_data"
+	expandedPath := filepath.Join(tempDir, subDirName)
+	if err := os.Mkdir(expandedPath, 0755); err != nil {
+		t.Fatalf("failed to create mock home subdirectory: %v", err)
+	}
+
+	composeContent := fmt.Sprintf(`
+services:
+  app:
+    volumes:
+      - "~/%s:/app/data"
+`, subDirName)
+
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{Items: []container.Summary{}}, nil
+		},
+		inspectFunc: func(ctx context.Context, containerID string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+			return client.ContainerInspectResult{}, fmt.Errorf("not found")
+		},
+	}
+
+	engine := NewEngine(tempDir, composePath, nil, comp, mockDocker)
+	report := engine.Run(context.Background())
+
+	// If tilde expanded to HOME (tempDir) and matched expandedPath, check should pass
+	foundTildeError := false
+	for _, check := range report.Checks {
+		if check.Group == "Volume & File Permissions" && check.Status == output.CheckFailed {
+			foundTildeError = true
+			t.Logf("Failed check: Name=%s, Error=%s", check.Name, check.Error)
+		}
+	}
+
+	if foundTildeError {
+		t.Error("expected volume tilde expansion check to pass, but found failures")
+	}
+}
+
+func TestEngineVolumePermissions(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Write a mock compose file
+	composeContent := `
+services:
+  app:
+    volumes:
+      - ./readonly_dir:/app/readonly
+      - ./writeonly_dir:/app/writeonly
+`
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	// 1. Read-only directory: writable check should fail, readable check should pass
+	readonlyPath := filepath.Join(tempDir, "readonly_dir")
+	if err := os.Mkdir(readonlyPath, 0555); err != nil {
+		t.Fatalf("failed to create readonly dir: %v", err)
+	}
+	defer os.Chmod(readonlyPath, 0755) // restore so cleanup succeeds
+
+	// 2. Write-only (non-readable) directory: readable check should fail
+	writeonlyPath := filepath.Join(tempDir, "writeonly_dir")
+	if err := os.Mkdir(writeonlyPath, 0333); err != nil {
+		t.Fatalf("failed to create writeonly dir: %v", err)
+	}
+	defer os.Chmod(writeonlyPath, 0755) // restore so cleanup succeeds
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{Items: []container.Summary{}}, nil
+		},
+	}
+
+	engine := NewEngine(tempDir, composePath, nil, comp, mockDocker)
+	report := engine.Run(context.Background())
+
+	if report.Status != output.StatusEnvironmentBroken {
+		t.Errorf("expected status environment_broken, got: %s", report.Status)
+	}
+
+	foundReadLockout := false
+	foundWriteLockout := false
+
+	for _, check := range report.Checks {
+		if check.Group == "Volume & File Permissions" && check.Status == output.CheckFailed {
+			if strings.Contains(check.Name, "Volume read lockout") && strings.Contains(check.Name, "writeonly_dir") {
+				foundReadLockout = true
+			}
+			if strings.Contains(check.Name, "Volume permission lockout") && strings.Contains(check.Name, "readonly_dir") {
+				foundWriteLockout = true
+			}
+		}
+	}
+
+	// Note: root user running tests might ignore permissions, so we check if the test is running as root
+	if os.Getuid() != 0 {
+		if !foundReadLockout {
+			t.Error("expected to find volume read lockout error for writeonly_dir")
+		}
+		if !foundWriteLockout {
+			t.Error("expected to find volume permission lockout error for readonly_dir")
 		}
 	}
 }

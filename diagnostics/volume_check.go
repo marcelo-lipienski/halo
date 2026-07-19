@@ -5,9 +5,39 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/marcelo-lipienski/halo/output"
 )
+
+func isReadable(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+
+	if info.IsDir() {
+		// Attempt to read the directory names (at least 1)
+		f, err := os.Open(path)
+		if err != nil {
+			return false, err
+		}
+		defer f.Close()
+		_, err = f.Readdirnames(1)
+		if err != nil && err.Error() != "EOF" {
+			return false, err
+		}
+		return true, nil
+	}
+
+	// For files, attempt to open for reading
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	f.Close()
+	return true, nil
+}
 
 func isWritable(path string) (bool, error) {
 	info, err := os.Stat(path)
@@ -41,6 +71,12 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 	volumeCheckPassed := true
 	for svcName, svc := range e.Compose.Services {
 		for _, vol := range svc.Volumes {
+			select {
+			case <-ctx.Done():
+				return results
+			default:
+			}
+
 			if vol.Type != "bind" {
 				continue
 			}
@@ -51,6 +87,18 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 			}
 
 			hostPath := resolvedSource
+			if strings.HasPrefix(hostPath, "~") {
+				home, err := os.UserHomeDir()
+				if err == nil {
+					if hostPath == "~" {
+						hostPath = home
+					} else if strings.HasPrefix(hostPath, "~/") {
+						hostPath = filepath.Join(home, hostPath[2:])
+					} else if strings.HasPrefix(hostPath, "~\\") {
+						hostPath = filepath.Join(home, hostPath[2:])
+					}
+				}
+			}
 			if !filepath.IsAbs(hostPath) {
 				hostPath = filepath.Join(e.ConfigDir, hostPath)
 			}
@@ -66,7 +114,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 					Name:       fmt.Sprintf("Volume source missing: %s", vol.Source),
 					Status:     output.CheckFailed,
 					Error:      fmt.Sprintf("Bind-mount host path '%s' for service %s does not exist. Docker auto-creation can lead to write permission lockouts (root ownership).", hostPath, svcName),
-					Mitigation: fmt.Sprintf("Run: mkdir -p %s && chmod -R 775 %s", vol.Source, vol.Source),
+					Mitigation: fmt.Sprintf("Run: mkdir -p %s && chmod -R 775 %s", hostPath, hostPath),
 				})
 				continue
 			} else if err != nil {
@@ -81,6 +129,26 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				continue
 			}
 
+			readable, rErr := isReadable(hostPath)
+			if !readable || rErr != nil {
+				volumeCheckPassed = false
+				pathType := "Directory"
+				if !info.IsDir() {
+					pathType = "File"
+				}
+				errStr := fmt.Sprintf("%s '%s' for service %s is not readable by current host user.", pathType, hostPath, svcName)
+				if rErr != nil {
+					errStr = fmt.Sprintf("%s '%s' for service %s is not readable by current host user. System error: %v", pathType, hostPath, svcName, rErr)
+				}
+				results = append(results, output.CheckResult{
+					Group:      "Volume & File Permissions",
+					Name:       fmt.Sprintf("Volume read lockout: %s", vol.Source),
+					Status:     output.CheckFailed,
+					Error:      errStr,
+					Mitigation: fmt.Sprintf("Run: chmod -R u+r %s or sudo chown -R $USER %s", hostPath, hostPath),
+				})
+			}
+
 			writable, wErr := isWritable(hostPath)
 			if !writable || wErr != nil {
 				volumeCheckPassed = false
@@ -88,12 +156,16 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				if !info.IsDir() {
 					pathType = "File"
 				}
+				errStr := fmt.Sprintf("%s '%s' for service %s is not writable by current host user.", pathType, hostPath, svcName)
+				if wErr != nil {
+					errStr = fmt.Sprintf("%s '%s' for service %s is not writable by current host user. System error: %v", pathType, hostPath, svcName, wErr)
+				}
 				results = append(results, output.CheckResult{
 					Group:      "Volume & File Permissions",
 					Name:       fmt.Sprintf("Volume permission lockout: %s", vol.Source),
 					Status:     output.CheckFailed,
-					Error:      fmt.Sprintf("%s '%s' for service %s is not writable by current host user.", pathType, hostPath, svcName),
-					Mitigation: fmt.Sprintf("Run: chmod -R u+rw %s or sudo chown -R $USER %s", vol.Source, vol.Source),
+					Error:      errStr,
+					Mitigation: fmt.Sprintf("Run: chmod -R u+rw %s or sudo chown -R $USER %s", hostPath, hostPath),
 				})
 			}
 		}
