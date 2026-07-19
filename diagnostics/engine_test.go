@@ -777,31 +777,36 @@ services:
 	engine := NewEngine(tempDir, composePath, nil, comp, mockDocker)
 	report := engine.Run(context.Background())
 
-	if report.Status != output.StatusEnvironmentBroken {
-		t.Errorf("expected status environment_broken, got: %s", report.Status)
-	}
-
-	foundReadLockout := false
-	foundWriteLockout := false
-
-	for _, check := range report.Checks {
-		if check.Group == "Volume & File Permissions" && check.Status == output.CheckFailed {
-			if strings.Contains(check.Name, "Volume read lockout") && strings.Contains(check.Name, "writeonly_dir") {
-				foundReadLockout = true
-			}
-			if strings.Contains(check.Name, "Volume permission lockout") && strings.Contains(check.Name, "readonly_dir") {
-				foundWriteLockout = true
-			}
-		}
-	}
-
 	// Note: root user running tests might ignore permissions, and Windows does not support POSIX chmod directories
 	if runtime.GOOS != "windows" && os.Getuid() != 0 {
+		if report.Status != output.StatusEnvironmentBroken {
+			t.Errorf("expected status environment_broken, got: %s", report.Status)
+		}
+
+		foundReadLockout := false
+		foundWriteLockout := false
+
+		for _, check := range report.Checks {
+			if check.Group == "Volume & File Permissions" && check.Status == output.CheckFailed {
+				if strings.Contains(check.Name, "Volume read lockout") && strings.Contains(check.Name, "writeonly_dir") {
+					foundReadLockout = true
+				}
+				if strings.Contains(check.Name, "Volume permission lockout") && strings.Contains(check.Name, "readonly_dir") {
+					foundWriteLockout = true
+				}
+			}
+		}
+
 		if !foundReadLockout {
 			t.Error("expected to find volume read lockout error for writeonly_dir")
 		}
 		if !foundWriteLockout {
 			t.Error("expected to find volume permission lockout error for readonly_dir")
+		}
+	} else {
+		// On Windows or as root, the directory permissions are not restrictive, so the status should be healthy
+		if report.Status != output.StatusHealthy {
+			t.Errorf("expected status healthy on Windows/root, got: %s", report.Status)
 		}
 	}
 }

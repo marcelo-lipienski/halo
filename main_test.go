@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -12,6 +13,9 @@ func TestCLIQuietFlag(t *testing.T) {
 	// 1. Build the binary first
 	tempDir := t.TempDir()
 	binaryPath := filepath.Join(tempDir, "halo_test_bin")
+	if runtime.GOOS == "windows" {
+		binaryPath += ".exe"
+	}
 	buildCmd := exec.Command("go", "build", "-o", binaryPath, ".")
 	if err := buildCmd.Run(); err != nil {
 		t.Fatalf("failed to build binary for CLI testing: %v", err)
