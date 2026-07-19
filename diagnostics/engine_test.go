@@ -434,7 +434,7 @@ services:
 	foundSpecificError := false
 	for _, check := range report.Checks {
 		if check.Status == output.CheckFailed && check.Group == "Network & Port Availability" {
-			if check.Name == "Service web failed to start" &&
+			if check.Name == "Service web reachability" &&
 				strings.Contains(check.Error, "port is now available") &&
 				strings.Contains(check.Mitigation, "Simply restart the service") {
 				foundSpecificError = true
@@ -521,7 +521,7 @@ services:
 	foundSpecificError := false
 	for _, check := range report.Checks {
 		if check.Status == output.CheckFailed && check.Group == "Network & Port Availability" {
-			if check.Name == "Service web failed to start" &&
+			if check.Name == "Service web reachability" &&
 				strings.Contains(check.Error, "due to host port collision") &&
 				strings.Contains(check.Mitigation, "Stop the process occupying the port") {
 				foundSpecificError = true
@@ -1423,7 +1423,7 @@ services:
 
 	hasWarning := false
 	for _, check := range report.Checks {
-		if check.Status == output.CheckWarning && strings.Contains(check.Name, "health is starting") {
+		if check.Status == output.CheckWarning && check.Name == "Service app reachability" {
 			hasWarning = true
 			if !strings.Contains(check.Error, "health check is still initialising") {
 				t.Errorf("expected warning details, got: %s", check.Error)
@@ -1648,7 +1648,7 @@ services:
 	for _, check := range report.Checks {
 		if check.Group == "Network & Port Availability" &&
 			check.Status == output.CheckWarning &&
-			strings.Contains(check.Name, "app unreachable") {
+			check.Name == "Service app reachability" {
 			foundWarning = true
 			break
 		}
