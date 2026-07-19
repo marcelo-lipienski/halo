@@ -59,6 +59,18 @@ func parseHostPortProto(p string) (string, string) {
 		p = strings.TrimSuffix(p, "/tcp")
 	}
 
+	if strings.HasPrefix(p, "[") {
+		closeBracketIdx := strings.LastIndex(p, "]")
+		if closeBracketIdx != -1 && len(p) > closeBracketIdx+1 && p[closeBracketIdx+1] == ':' {
+			remainder := p[closeBracketIdx+2:]
+			parts := strings.Split(remainder, ":")
+			if len(parts) == 2 {
+				return parts[0], proto
+			}
+			return "", proto
+		}
+	}
+
 	parts := strings.Split(p, ":")
 	switch len(parts) {
 	case 3:

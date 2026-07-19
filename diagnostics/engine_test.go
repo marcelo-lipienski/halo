@@ -1070,4 +1070,34 @@ services:
 	}
 }
 
+func TestParseHostPortProto(t *testing.T) {
+	tests := []struct {
+		input        string
+		expectedPort string
+		expectedProto string
+	}{
+		{"8080:80", "8080", "tcp"},
+		{"8080:80/tcp", "8080", "tcp"},
+		{"8080:80/udp", "8080", "udp"},
+		{"127.0.0.1:8080:80", "8080", "tcp"},
+		{"127.0.0.1:8080:80/udp", "8080", "udp"},
+		{"[::1]:8080:80", "8080", "tcp"},
+		{"[::1]:8080:80/udp", "8080", "udp"},
+		{"80", "", "tcp"},
+		{"[::1]:80", "", "tcp"},
+		{"8080-8085:80-85", "8080-8085", "tcp"},
+		{"[::1]:8080-8085:80-85", "8080-8085", "tcp"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			port, proto := parseHostPortProto(tc.input)
+			if port != tc.expectedPort || proto != tc.expectedProto {
+				t.Errorf("parseHostPortProto(%q) = (%q, %q); expected (%q, %q)",
+					tc.input, port, proto, tc.expectedPort, tc.expectedProto)
+			}
+		})
+	}
+}
+
 
