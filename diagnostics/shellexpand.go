@@ -26,12 +26,10 @@ type shellEnvRef struct {
 // Returns nil if the string contains no parseable words.
 func parseShellWord(s string) *syntax.Word {
 	p := syntax.NewParser()
-	var result *syntax.Word
-	_ = p.Words(strings.NewReader(s), func(w *syntax.Word) bool {
-		result = w
-		return false // stop after first word
-	})
-	return result
+	for w, _ := range p.WordsSeq(strings.NewReader(s)) {
+		return w
+	}
+	return nil
 }
 
 // extractShellEnvRefs parses a shell word string and returns all parameter
