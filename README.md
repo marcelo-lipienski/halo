@@ -31,13 +31,15 @@ config files        AST structures natively       Env checks in parallel   or st
 ## Quick Start
 
 ### Installation
-Download the pre-compiled binary directly via Go:
+Download and install the latest release via Go:
 
 ```bash
-go install [github.com/yourusername/halo@latest](https://github.com/yourusername/halo@latest)
+go install github.com/marcelo-lipienski/halo@latest
 ```
 
-Usage
+> **Note:** halo requires Go 1.26 or later. Go 1.26 is currently a pre-release version.
+
+## Usage
 
 Run the diagnostic check inside any project root containing a docker-compose.yml file:
 
