@@ -2,8 +2,12 @@ package diagnostics
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/moby/moby/api/types/container"
@@ -251,5 +255,113 @@ services:
 				t.Logf("Failed check: %s (%s) - %s", check.Name, check.Group, check.Error)
 			}
 		}
+	}
+}
+
+func TestEngineOwnContainerPortBypass(t *testing.T) {
+	tempDir := t.TempDir()
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen on local port: %v", err)
+	}
+	defer l.Close()
+
+	_, portStr, err := net.SplitHostPort(l.Addr().String())
+	if err != nil {
+		t.Fatalf("failed to split host port: %v", err)
+	}
+
+	composeContent := fmt.Sprintf(`
+services:
+  web:
+    ports:
+      - "%s:80"
+`, portStr)
+
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	projName := filepath.Base(tempDir)
+	portVal, _ := strconv.Atoi(portStr)
+
+	mockDockerA := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{
+				Items: []container.Summary{
+					{
+						ID:    "mock-id",
+						State: "running",
+						Labels: map[string]string{
+							"com.docker.compose.project": projName,
+							"com.docker.compose.service": "web",
+						},
+						Ports: []container.PortSummary{
+							{
+								PublicPort: uint16(portVal),
+								Type:       "tcp",
+							},
+						},
+					},
+				},
+			}, nil
+		},
+		inspectFunc: func(ctx context.Context, containerID string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+			return client.ContainerInspectResult{
+				Container: container.InspectResponse{
+					State: &container.State{
+						Running: true,
+					},
+				},
+			}, nil
+		},
+	}
+
+	engineA := NewEngine(tempDir, composePath, nil, comp, mockDockerA)
+	reportA := engineA.Run(context.Background())
+
+	if reportA.Status != output.StatusHealthy {
+		t.Errorf("expected status healthy in Scenario A (bypass active), got: %s", reportA.Status)
+		for _, check := range reportA.Checks {
+			if check.Status == output.CheckFailed {
+				t.Logf("Failed check: %s (%s) - %s", check.Name, check.Group, check.Error)
+			}
+		}
+	}
+
+	mockDockerB := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{
+				Items: []container.Summary{},
+			}, nil
+		},
+		inspectFunc: func(ctx context.Context, containerID string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+			return client.ContainerInspectResult{}, fmt.Errorf("not found")
+		},
+	}
+
+	engineB := NewEngine(tempDir, composePath, nil, comp, mockDockerB)
+	reportB := engineB.Run(context.Background())
+
+	if reportB.Status != output.StatusEnvironmentBroken {
+		t.Errorf("expected status environment_broken in Scenario B (no bypass), got: %s", reportB.Status)
+	}
+
+	foundCollision := false
+	for _, check := range reportB.Checks {
+		if check.Status == output.CheckFailed && check.Group == "Network & Port Availability" && strings.Contains(check.Name, "Port Collision") {
+			foundCollision = true
+			break
+		}
+	}
+	if !foundCollision {
+		t.Error("expected to find port collision failure in Scenario B")
 	}
 }

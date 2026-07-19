@@ -81,6 +81,24 @@ func checkPortCollision(hostPort string, proto string) bool {
 func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	var results []output.CheckResult
 
+	absDir, _ := filepath.Abs(e.ConfigDir)
+	projectName := filepath.Base(absDir)
+	if envProj := os.Getenv("COMPOSE_PROJECT_NAME"); envProj != "" {
+		projectName = envProj
+	}
+	projectName = strings.ToLower(projectName)
+
+	// Fetch containers first to check if a port is bound by our own active container
+	var containers client.ContainerListResult
+	var listErr error
+	hasContainers := false
+	if e.DockerCli != nil {
+		containers, listErr = e.DockerCli.ContainerList(ctx, client.ContainerListOptions{All: true})
+		if listErr == nil {
+			hasContainers = true
+		}
+	}
+
 	// 1. Port Collision Check
 	portCollisionPassed := true
 	for svcName, svc := range e.Compose.Services {
@@ -88,6 +106,31 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 			resolvedPort := e.resolveEnvVars(rawPort)
 			hostPort, proto := parseHostPortProto(resolvedPort)
 			if hostPort == "" {
+				continue
+			}
+
+			// Check if this port is already occupied by this service's own running container
+			isBoundBySelf := false
+			if hasContainers {
+				for _, c := range containers.Items {
+					cProj := strings.ToLower(c.Labels["com.docker.compose.project"])
+					cSvc := c.Labels["com.docker.compose.service"]
+					if cProj == projectName && cSvc == svcName && c.State == "running" {
+						for _, p := range c.Ports {
+							if fmt.Sprintf("%d", p.PublicPort) == hostPort && p.Type == proto {
+								isBoundBySelf = true
+								break
+							}
+						}
+					}
+					if isBoundBySelf {
+						break
+					}
+				}
+			}
+
+			if isBoundBySelf {
+				// The port is occupied by our own running container, which is expected
 				continue
 			}
 
@@ -124,20 +167,12 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 		return results
 	}
 
-	absDir, _ := filepath.Abs(e.ConfigDir)
-	projectName := filepath.Base(absDir)
-	if envProj := os.Getenv("COMPOSE_PROJECT_NAME"); envProj != "" {
-		projectName = envProj
-	}
-	projectName = strings.ToLower(projectName)
-
-	containers, err := e.DockerCli.ContainerList(ctx, client.ContainerListOptions{All: true})
-	if err != nil {
+	if listErr != nil {
 		results = append(results, output.CheckResult{
 			Group:      "Network & Port Availability",
 			Name:       "Service Reachability",
 			Status:     output.CheckFailed,
-			Error:      fmt.Sprintf("Failed to list docker containers: %v", err),
+			Error:      fmt.Sprintf("Failed to list docker containers: %v", listErr),
 			Mitigation: "Check docker service status and permissions.",
 		})
 		return results
