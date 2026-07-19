@@ -609,6 +609,74 @@ services:
 	}
 }
 
+func TestEngineLargePortRangeWarning(t *testing.T) {
+	cases := []struct {
+		name         string
+		portRange    string
+		expectWarn   bool
+	}{
+		{
+			name:       "range below threshold emits no warning",
+			portRange:  "8000-8010:8000-8010", // 11 ports — well under 64
+			expectWarn: false,
+		},
+		{
+			name:       "range above threshold emits CheckWarning",
+			portRange:  "9000-9100:9000-9100", // 101 ports — over 64
+			expectWarn: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			composeContent := fmt.Sprintf(`
+services:
+  app:
+    ports:
+      - "%s"
+`, tc.portRange)
+			composePath := filepath.Join(tempDir, "docker-compose.yml")
+			if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+				t.Fatalf("failed to write compose file: %v", err)
+			}
+			comp, err := config.ParseCompose(composePath)
+			if err != nil {
+				t.Fatalf("failed to parse compose: %v", err)
+			}
+
+			mockDocker := &mockDockerClient{
+				listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+					return client.ContainerListResult{Items: []container.Summary{}}, nil
+				},
+				inspectFunc: func(ctx context.Context, containerID string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+					return client.ContainerInspectResult{}, fmt.Errorf("not found")
+				},
+			}
+
+			engine := NewEngine(tempDir, composePath, nil, comp, mockDocker)
+			report := engine.Run(context.Background())
+
+			foundWarn := false
+			for _, check := range report.Checks {
+				if check.Status == output.CheckWarning &&
+					check.Group == "Network & Port Availability" &&
+					strings.Contains(check.Name, "Large port range") {
+					foundWarn = true
+					break
+				}
+			}
+
+			if tc.expectWarn && !foundWarn {
+				t.Errorf("expected a large-port-range CheckWarning but none was found")
+			}
+			if !tc.expectWarn && foundWarn {
+				t.Errorf("did not expect a large-port-range CheckWarning but found one")
+			}
+		})
+	}
+}
+
 func TestEngineVolumeTildeExpansion(t *testing.T) {
 	tempDir := t.TempDir()
 
