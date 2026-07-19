@@ -61,7 +61,7 @@ func isWritable(path string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		defer os.Remove(tempFile.Name())
+		defer func() { _ = os.Remove(tempFile.Name()) }()
 		_ = tempFile.Close()
 		return true, nil
 	}
@@ -434,7 +434,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				Mitigation: fmt.Sprintf("Run: chmod u+r %s or sudo chown $USER %s", secretPath, secretPath),
 			})
 		} else {
-			f.Close()
+			_ = f.Close()
 		}
 	}
 
@@ -541,7 +541,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				Mitigation: fmt.Sprintf("Run: chmod u+r %s or sudo chown $USER %s", cfgPath, cfgPath),
 			})
 		} else {
-			f.Close()
+			_ = f.Close()
 		}
 	}
 
