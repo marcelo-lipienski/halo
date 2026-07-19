@@ -35,6 +35,7 @@ var (
 	format       string
 	verbose      bool
 	fix          bool
+	quiet        bool
 )
 
 func main() {
@@ -55,6 +56,7 @@ func main() {
 	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "text", "Output format for results (text|json)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enables debug logging")
 	rootCmd.PersistentFlags().BoolVar(&fix, "fix", false, "Automatically attempt to mitigate file permission and missing directory issues")
+	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppresses all standard output")
 
 	// check subcommand
 	checkCmd := &cobra.Command{
@@ -204,10 +206,12 @@ func runCheck() {
 	engine.AutoFix = fix
 	report := engine.Run(ctx)
 
-	if format == "json" {
-		_ = output.RenderJSON(os.Stdout, report)
-	} else {
-		output.RenderText(os.Stdout, report, verbose)
+	if !quiet {
+		if format == "json" {
+			_ = output.RenderJSON(os.Stdout, report)
+		} else {
+			output.RenderText(os.Stdout, report, verbose)
+		}
 	}
 
 	if report.Status == output.StatusEnvironmentBroken {
@@ -230,10 +234,14 @@ func exitWithSystemFailure(format string, verbose bool, errStr, mitigationStr st
 			},
 		},
 	}
-	if format == "json" {
-		_ = output.RenderJSON(os.Stdout, report)
+	if quiet {
+		fmt.Fprintf(os.Stderr, "Error: %s\nMitigation: %s\n", errStr, mitigationStr)
 	} else {
-		output.RenderText(os.Stdout, report, verbose)
+		if format == "json" {
+			_ = output.RenderJSON(os.Stdout, report)
+		} else {
+			output.RenderText(os.Stdout, report, verbose)
+		}
 	}
 	os.Exit(1)
 }

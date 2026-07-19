@@ -1,0 +1,57 @@
+package main
+
+import (
+	"bytes"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestCLIQuietFlag(t *testing.T) {
+	// 1. Build the binary first
+	tempDir := t.TempDir()
+	binaryPath := filepath.Join(tempDir, "halo_test_bin")
+	buildCmd := exec.Command("go", "build", "-o", binaryPath, ".")
+	if err := buildCmd.Run(); err != nil {
+		t.Fatalf("failed to build binary for CLI testing: %v", err)
+	}
+
+	// 2. Test quiet mode on system failure (missing configs)
+	// We run check in an empty temp directory so it fails with system failure.
+	cmdQuiet := exec.Command(binaryPath, "check", "--quiet", "--config-dir", tempDir)
+	var stdoutQuiet, stderrQuiet bytes.Buffer
+	cmdQuiet.Stdout = &stdoutQuiet
+	cmdQuiet.Stderr = &stderrQuiet
+
+	errQuiet := cmdQuiet.Run()
+	// Should fail with exit code 1
+	if errQuiet == nil {
+		t.Error("expected command to fail due to missing configuration files")
+	}
+
+	if stdoutQuiet.Len() > 0 {
+		t.Errorf("expected stdout to be completely empty in quiet mode, got: %q", stdoutQuiet.String())
+	}
+
+	if stderrQuiet.Len() == 0 {
+		t.Error("expected stderr to contain error messages, but got nothing")
+	} else if !strings.Contains(stderrQuiet.String(), "Missing configuration files") {
+		t.Errorf("expected stderr to report missing configuration files, got: %q", stderrQuiet.String())
+	}
+
+	// 3. Test non-quiet mode to verify report goes to stdout
+	cmdNormal := exec.Command(binaryPath, "check", "--config-dir", tempDir)
+	var stdoutNormal, stderrNormal bytes.Buffer
+	cmdNormal.Stdout = &stdoutNormal
+	cmdNormal.Stderr = &stderrNormal
+
+	_ = cmdNormal.Run()
+
+	if stdoutNormal.Len() == 0 {
+		t.Error("expected stdout to contain report output in normal mode, but it was empty")
+	}
+	if stderrNormal.Len() > 0 {
+		t.Errorf("expected stderr to be empty in normal mode when failing via exitWithSystemFailure output, got: %q", stderrNormal.String())
+	}
+}
