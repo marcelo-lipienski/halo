@@ -686,14 +686,14 @@ services:
 	if err := os.Mkdir(readonlyPath, 0555); err != nil {
 		t.Fatalf("failed to create readonly dir: %v", err)
 	}
-	defer os.Chmod(readonlyPath, 0755) // restore so cleanup succeeds
+	defer func() { _ = os.Chmod(readonlyPath, 0755) }() // restore so cleanup succeeds
 
 	// 2. Write-only (non-readable) directory: readable check should fail
 	writeonlyPath := filepath.Join(tempDir, "writeonly_dir")
 	if err := os.Mkdir(writeonlyPath, 0333); err != nil {
 		t.Fatalf("failed to create writeonly dir: %v", err)
 	}
-	defer os.Chmod(writeonlyPath, 0755) // restore so cleanup succeeds
+	defer func() { _ = os.Chmod(writeonlyPath, 0755) }() // restore so cleanup succeeds
 
 	comp, err := config.ParseCompose(composePath)
 	if err != nil {
@@ -758,7 +758,7 @@ services:
 	if err := os.Mkdir(readonlyPath, 0555); err != nil {
 		t.Fatalf("failed to create readonly dir: %v", err)
 	}
-	defer os.Chmod(readonlyPath, 0755) // restore so cleanup succeeds
+	defer func() { _ = os.Chmod(readonlyPath, 0755) }() // restore so cleanup succeeds
 
 	comp, err := config.ParseCompose(composePath)
 	if err != nil {
@@ -831,8 +831,7 @@ services:
 	}
 
 	// Set HOST_PORT in the system environment
-	os.Setenv("HOST_PORT", "9090")
-	defer os.Unsetenv("HOST_PORT")
+	t.Setenv("HOST_PORT", "9090")
 
 	comp, err := config.ParseCompose(composePath)
 	if err != nil {

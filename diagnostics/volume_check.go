@@ -32,7 +32,7 @@ func isReadable(path string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		_, err = f.Readdirnames(1)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return false, err
@@ -45,7 +45,7 @@ func isReadable(path string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	f.Close()
+	_ = f.Close()
 	return true, nil
 }
 
@@ -62,7 +62,7 @@ func isWritable(path string) (bool, error) {
 			return false, err
 		}
 		defer os.Remove(tempFile.Name())
-		tempFile.Close()
+		_ = tempFile.Close()
 		return true, nil
 	}
 
@@ -71,7 +71,7 @@ func isWritable(path string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	f.Close()
+	_ = f.Close()
 	return true, nil
 }
 
