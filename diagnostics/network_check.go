@@ -35,9 +35,9 @@ func (e *Engine) resolveEnvVars(s string) string {
 		// Check if it's the :- format (meaning fallback if unset OR empty)
 		isUnsetOrEmptyFallback := strings.Contains(match, ":-")
 
-		val, ok := e.Env[varName]
+		val, ok := os.LookupEnv(varName)
 		if !ok {
-			val, ok = os.LookupEnv(varName)
+			val, ok = e.Env[varName]
 		}
 
 		if ok {
@@ -129,12 +129,14 @@ func isPortBoundBySelf(port int, proto string, containers []container.Summary, p
 func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	var results []output.CheckResult
 
-	absDir, _ := filepath.Abs(e.ConfigDir)
-	projectName := filepath.Base(absDir)
-	if envProj, ok := e.Env["COMPOSE_PROJECT_NAME"]; ok && envProj != "" {
+	projectName := ""
+	if envProj := os.Getenv("COMPOSE_PROJECT_NAME"); envProj != "" {
 		projectName = envProj
-	} else if envProj := os.Getenv("COMPOSE_PROJECT_NAME"); envProj != "" {
+	} else if envProj, ok := e.Env["COMPOSE_PROJECT_NAME"]; ok && envProj != "" {
 		projectName = envProj
+	} else {
+		absDir, _ := filepath.Abs(e.ConfigDir)
+		projectName = filepath.Base(absDir)
 	}
 	projectName = strings.ToLower(projectName)
 

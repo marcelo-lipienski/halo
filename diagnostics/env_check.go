@@ -99,14 +99,10 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 		default:
 		}
 
-		val, exists := e.Env[ref.name]
+		// Check system environment variable first (takes precedence)
+		val, exists := os.LookupEnv(ref.name)
 		if !exists {
-			// Check system environment variable fallback
-			sysVal, sysExists := os.LookupEnv(ref.name)
-			if sysExists {
-				val = sysVal
-				exists = true
-			}
+			val, exists = e.Env[ref.name]
 		}
 
 		if !exists {
