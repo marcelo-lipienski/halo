@@ -217,3 +217,46 @@ func TestRenderTextSummaryWithFailures(t *testing.T) {
 		t.Errorf("expected summary '1 of 3 checks passed (2 failed)', got: %s", outputStr)
 	}
 }
+
+// TestRenderTextSummaryWarningsNotCountedAsFailed verifies that warnings are
+// excluded from the failure count in the summary line.
+func TestRenderTextSummaryWarningsNotCountedAsFailed(t *testing.T) {
+	report := &DiagnosticsReport{
+		Status:     StatusEnvironmentBroken,
+		DurationMs: 5,
+		Checks: []CheckResult{
+			{Group: "G", Name: "Pass", Status: CheckPassed},
+			{Group: "G", Name: "Warn", Status: CheckWarning, Error: "w", Mitigation: "m"},
+			{Group: "G", Name: "Fail", Status: CheckFailed, Error: "f"},
+		},
+	}
+
+	var buf bytes.Buffer
+	RenderText(&buf, report, false)
+
+	outputStr := buf.String()
+	// 1 passed, 1 warned, 1 failed → "1 of 3 checks passed (1 failed)"
+	if !strings.Contains(outputStr, "1 of 3 checks passed (1 failed)") {
+		t.Errorf("expected summary '1 of 3 checks passed (1 failed)' — warnings must not count as failures, got: %s", outputStr)
+	}
+}
+
+// TestRenderTextNoColorEnvVar verifies ANSI codes are absent when NO_COLOR is set.
+func TestRenderTextNoColorEnvVar(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+
+	report := &DiagnosticsReport{
+		Status:     StatusHealthy,
+		DurationMs: 1,
+		Checks: []CheckResult{
+			{Group: "G", Name: "Pass", Status: CheckPassed},
+		},
+	}
+
+	var buf bytes.Buffer
+	RenderText(&buf, report, false)
+
+	if strings.Contains(buf.String(), "\033[") {
+		t.Errorf("expected no ANSI codes when NO_COLOR is set, got: %q", buf.String())
+	}
+}

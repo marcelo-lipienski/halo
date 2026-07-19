@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 )
 
 // Status represents the overall execution status of the diagnostics tool
@@ -52,22 +53,58 @@ func RenderJSON(w io.Writer, report *DiagnosticsReport) error {
 	return enc.Encode(report)
 }
 
-// RenderText formats the report as ANSI text and writes to target writer
+// isTTY returns true if the given writer is an os.File connected to a terminal.
+func isTTY(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) != 0
+}
+
+// useColor returns true when ANSI colour output should be emitted.
+// It is suppressed when the NO_COLOR environment variable is set (any value)
+// or when the target writer is not a TTY.
+func useColor(w io.Writer) bool {
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	return isTTY(w)
+}
+
+// colorize wraps s in the given ANSI escape sequence when colour is enabled.
+func colorize(s, ansi string, color bool) string {
+	if !color {
+		return s
+	}
+	return "\033[" + ansi + "m" + s + "\033[0m"
+}
+
+// RenderText formats the report as ANSI text and writes to target writer.
+// ANSI colour sequences are suppressed when NO_COLOR is set or the writer is
+// not a terminal.
 func RenderText(w io.Writer, report *DiagnosticsReport, verbose bool) {
+	color := useColor(w)
+
 	fmt.Fprintln(w, "=== halo Diagnostics Report ===")
 	fmt.Fprintf(w, "Status:   ")
 	switch report.Status {
 	case StatusHealthy:
-		fmt.Fprintf(w, "\033[32m%s\033[0m\n", report.Status)
+		fmt.Fprintln(w, colorize(string(report.Status), "32", color))
 	case StatusSystemFailure:
-		fmt.Fprintf(w, "\033[31;1m%s\033[0m\n", report.Status)
+		fmt.Fprintln(w, colorize(string(report.Status), "31;1", color))
 	case StatusEnvironmentBroken:
-		fmt.Fprintf(w, "\033[33;1m%s\033[0m\n", report.Status)
+		fmt.Fprintln(w, colorize(string(report.Status), "33;1", color))
 	}
 	fmt.Fprintf(w, "Duration: %dms\n", report.DurationMs)
 
 	currentGroup := ""
 	passed := 0
+	warned := 0
 	total := 0
 	for _, check := range report.Checks {
 		total++
@@ -76,38 +113,40 @@ func RenderText(w io.Writer, report *DiagnosticsReport, verbose bool) {
 			fmt.Fprintf(w, "\n[%s]\n", currentGroup)
 		}
 
-		if check.Status == CheckPassed {
+		switch check.Status {
+		case CheckPassed:
 			passed++
-			fmt.Fprintf(w, "  \033[32m✓\033[0m %s\n", check.Name)
-		} else if check.Status == CheckWarning {
-			fmt.Fprintf(w, "  \033[33m⚠\033[0m %s\n", check.Name)
+			fmt.Fprintf(w, "  %s %s\n", colorize("✓", "32", color), check.Name)
+		case CheckWarning:
+			warned++
+			fmt.Fprintf(w, "  %s %s\n", colorize("⚠", "33", color), check.Name)
 			if check.Error != "" && verbose {
-				fmt.Fprintf(w, "    \033[90mWarning:\033[0m %s\n", check.Error)
+				fmt.Fprintf(w, "    %s %s\n", colorize("Warning:", "90", color), check.Error)
 			}
 			if check.Mitigation != "" {
-				fmt.Fprintf(w, "    \033[36mFix:\033[0m     %s\n", check.Mitigation)
+				fmt.Fprintf(w, "    %s     %s\n", colorize("Fix:", "36", color), check.Mitigation)
 			}
-		} else {
-			fmt.Fprintf(w, "  \033[31m✗\033[0m %s\n", check.Name)
+		default: // CheckFailed
+			fmt.Fprintf(w, "  %s %s\n", colorize("✗", "31", color), check.Name)
 			// Always show the error detail on failures — it's the actionable reason.
 			if check.Error != "" {
-				fmt.Fprintf(w, "    \033[90mError:\033[0m   %s\n", check.Error)
+				fmt.Fprintf(w, "    %s   %s\n", colorize("Error:", "90", color), check.Error)
 			}
 			if check.Mitigation != "" {
-				fmt.Fprintf(w, "    \033[36mFix:\033[0m     %s\n", check.Mitigation)
+				fmt.Fprintf(w, "    %s     %s\n", colorize("Fix:", "36", color), check.Mitigation)
 			}
 		}
 	}
 
 	fmt.Fprintln(w)
 	if total > 0 {
-		failed := total - passed
+		// Warnings are non-fatal: they do not count as failures in the summary.
+		failed := total - passed - warned
 		if failed == 0 {
-			fmt.Fprintf(w, "\033[32m%d of %d checks passed.\033[0m\n", passed, total)
+			fmt.Fprintln(w, colorize(fmt.Sprintf("%d of %d checks passed.", passed, total), "32", color))
 		} else {
-			fmt.Fprintf(w, "\033[31m%d of %d checks passed (%d failed).\033[0m\n", passed, total, failed)
+			fmt.Fprintln(w, colorize(fmt.Sprintf("%d of %d checks passed (%d failed).", passed, total, failed), "31", color))
 		}
 	}
 	fmt.Fprintln(w)
 }
-
