@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/marcelo-lipienski/halo/config"
@@ -19,14 +20,47 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Version information injected during build via ldflags
+type proxyWriter struct {
+	mu sync.RWMutex
+	w  io.Writer
+}
+
+func (p *proxyWriter) Write(b []byte) (n int, err error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.w.Write(b)
+}
+
+func (p *proxyWriter) Set(w io.Writer) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.w = w
+}
+
+type safeExitFunc struct {
+	mu sync.RWMutex
+	fn func(code int)
+}
+
+func (s *safeExitFunc) Exit(code int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	s.fn(code)
+}
+
+func (s *safeExitFunc) Set(fn func(code int)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fn = fn
+}
+
 var (
 	Version   = "dev"
 	CommitSHA = "unknown"
 
-	osExit           = os.Exit
-	stdout io.Writer = os.Stdout
-	stderr io.Writer = os.Stderr
+	osExit = &safeExitFunc{fn: os.Exit}
+	stdout = &proxyWriter{w: os.Stdout}
+	stderr = &proxyWriter{w: os.Stderr}
 )
 
 func printVersion() {
@@ -99,7 +133,7 @@ func newRootCmd() *cobra.Command {
 			if watch {
 				runWatch(context.Background())
 			} else {
-				osExit(executeCheck())
+				osExit.Exit(executeCheck())
 			}
 		},
 	}
@@ -124,7 +158,7 @@ func newRootCmd() *cobra.Command {
 			if watch {
 				runWatch(context.Background())
 			} else {
-				osExit(executeCheck())
+				osExit.Exit(executeCheck())
 			}
 		},
 	}
@@ -146,7 +180,7 @@ func newRootCmd() *cobra.Command {
 
 func main() {
 	if err := newRootCmd().Execute(); err != nil {
-		osExit(1)
+		osExit.Exit(1)
 	}
 }
 

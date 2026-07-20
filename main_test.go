@@ -11,6 +11,29 @@ import (
 	"time"
 )
 
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (s *safeBuffer) Write(p []byte) (n int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *safeBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
+}
+
+func (s *safeBuffer) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.buf.Reset()
+}
+
 var testMu sync.Mutex
 
 func runInProcess(args []string) (string, string, int) {
@@ -29,23 +52,33 @@ func runInProcess(args []string) (string, string, int) {
 	interactive = false
 	watch = false
 
-	origStdout := stdout
-	origStderr := stderr
-	origOsExit := osExit
+	stdout.mu.RLock()
+	origStdout := stdout.w
+	stdout.mu.RUnlock()
+
+	stderr.mu.RLock()
+	origStderr := stderr.w
+	stderr.mu.RUnlock()
+
+	osExit.mu.RLock()
+	origOsExit := osExit.fn
+	osExit.mu.RUnlock()
+
 	defer func() {
-		stdout = origStdout
-		stderr = origStderr
-		osExit = origOsExit
+		stdout.Set(origStdout)
+		stderr.Set(origStderr)
+		osExit.Set(origOsExit)
 	}()
 
-	var outBuf, errBuf bytes.Buffer
-	stdout = &outBuf
-	stderr = &errBuf
+	outBuf := &safeBuffer{}
+	errBuf := &safeBuffer{}
+	stdout.Set(outBuf)
+	stderr.Set(errBuf)
 
 	var exitCode int
-	osExit = func(code int) {
+	osExit.Set(func(code int) {
 		exitCode = code
-	}
+	})
 
 	rootCmd := newRootCmd()
 	rootCmd.SetArgs(args)
@@ -260,12 +293,19 @@ func TestCLIWatchMode(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Set up capturing output buffers
-	var outBuf, errBuf bytes.Buffer
+	outBuf := &safeBuffer{}
+	errBuf := &safeBuffer{}
 	testMu.Lock()
-	origStdout := stdout
-	origStderr := stderr
-	stdout = &outBuf
-	stderr = &errBuf
+	stdout.mu.RLock()
+	origStdout := stdout.w
+	stdout.mu.RUnlock()
+
+	stderr.mu.RLock()
+	origStderr := stderr.w
+	stderr.mu.RUnlock()
+
+	stdout.Set(outBuf)
+	stderr.Set(errBuf)
 	// Reset CLI globals
 	configDir = tempDir
 	envFile = ""
@@ -281,8 +321,8 @@ func TestCLIWatchMode(t *testing.T) {
 
 	defer func() {
 		testMu.Lock()
-		stdout = origStdout
-		stderr = origStderr
+		stdout.Set(origStdout)
+		stderr.Set(origStderr)
 		testMu.Unlock()
 	}()
 
