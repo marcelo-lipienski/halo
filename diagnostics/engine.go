@@ -2,6 +2,9 @@ package diagnostics
 
 import (
 	"context"
+	"os"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,9 +86,85 @@ func (e *Engine) Run(ctx context.Context) *output.DiagnosticsReport {
 		}
 	}
 
-	return &output.DiagnosticsReport{
+	report := &output.DiagnosticsReport{
 		Status:     status,
 		DurationMs: time.Since(start).Milliseconds(),
 		Checks:     results,
+	}
+
+	e.redactReport(report)
+	return report
+}
+
+func (e *Engine) getSensitiveValues() []string {
+	var values []string
+	isSensitiveKey := func(k string) bool {
+		k = strings.ToUpper(k)
+		return strings.Contains(k, "KEY") ||
+			strings.Contains(k, "SECRET") ||
+			strings.Contains(k, "PASSWORD") ||
+			strings.Contains(k, "PASS") ||
+			strings.Contains(k, "TOKEN") ||
+			strings.Contains(k, "CREDENTIAL") ||
+			strings.Contains(k, "AUTH") ||
+			strings.Contains(k, "CERT") ||
+			strings.Contains(k, "JWT") ||
+			strings.Contains(k, "API")
+	}
+
+	// Scan project-level env
+	for k, v := range e.Env {
+		if isSensitiveKey(k) && v != "" && len(v) > 2 {
+			values = append(values, v)
+		}
+	}
+
+	// Scan host env
+	for _, env := range os.Environ() {
+		parts := strings.SplitN(env, "=", 2)
+		if len(parts) == 2 {
+			k, v := parts[0], parts[1]
+			if isSensitiveKey(k) && v != "" && len(v) > 2 {
+				values = append(values, v)
+			}
+		}
+	}
+
+	// Scan service env files
+	for _, svc := range e.Compose.Services {
+		svcEnv := e.loadServiceEnvFiles(svc)
+		for k, v := range svcEnv {
+			if isSensitiveKey(k) && v != "" && len(v) > 2 {
+				values = append(values, v)
+			}
+		}
+	}
+
+	return values
+}
+
+func (e *Engine) redactReport(report *output.DiagnosticsReport) {
+	sensitiveVals := e.getSensitiveValues()
+	if len(sensitiveVals) == 0 {
+		return
+	}
+
+	// Sort sensitive values by length descending so that if one secret is a substring of another,
+	// the longer one gets replaced first.
+	sort.Slice(sensitiveVals, func(i, j int) bool {
+		return len(sensitiveVals[i]) > len(sensitiveVals[j])
+	})
+
+	redactStr := func(s string) string {
+		for _, val := range sensitiveVals {
+			s = strings.ReplaceAll(s, val, "[REDACTED]")
+		}
+		return s
+	}
+
+	for i := range report.Checks {
+		report.Checks[i].Name = redactStr(report.Checks[i].Name)
+		report.Checks[i].Error = redactStr(report.Checks[i].Error)
+		report.Checks[i].Mitigation = redactStr(report.Checks[i].Mitigation)
 	}
 }

@@ -2161,6 +2161,83 @@ services:
 	}
 }
 
+func TestEngineSensitiveDataRedaction(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  app:
+    image: nginx
+    environment:
+      - MY_SECRET_KEY # pass-through
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{}, nil
+		},
+	}
+
+	// Define a sensitive key and its value
+	env := map[string]string{
+		"MY_SECRET_KEY": "supersecretpassword123",
+	}
+
+	engine := NewEngine(tempDir, composePath, env, comp, mockDocker)
+	report := engine.Run(context.Background())
+
+	// Let's manually inject a check result containing the secret value to verify if it gets redacted
+	rawCheck := output.CheckResult{
+		Group:      "Test Group",
+		Name:       "Test check for supersecretpassword123",
+		Status:     output.CheckFailed,
+		Error:      "Failed because key supersecretpassword123 was invalid",
+		Mitigation: "Change key supersecretpassword123 immediately",
+	}
+	report.Checks = append(report.Checks, rawCheck)
+
+	// Trigger redaction manually
+	engine.redactReport(report)
+
+	// Verify that the secret is redacted in all fields of the check result we added
+	foundTestCheck := false
+	for _, check := range report.Checks {
+		if check.Group == "Test Group" {
+			foundTestCheck = true
+			if strings.Contains(check.Name, "supersecretpassword123") {
+				t.Error("expected secret key value to be redacted in Check Name")
+			}
+			if strings.Contains(check.Error, "supersecretpassword123") {
+				t.Error("expected secret key value to be redacted in Check Error")
+			}
+			if strings.Contains(check.Mitigation, "supersecretpassword123") {
+				t.Error("expected secret key value to be redacted in Check Mitigation")
+			}
+
+			if !strings.Contains(check.Name, "[REDACTED]") {
+				t.Error("expected [REDACTED] placeholder in Check Name")
+			}
+			if !strings.Contains(check.Error, "[REDACTED]") {
+				t.Error("expected [REDACTED] placeholder in Check Error")
+			}
+			if !strings.Contains(check.Mitigation, "[REDACTED]") {
+				t.Error("expected [REDACTED] placeholder in Check Mitigation")
+			}
+		}
+	}
+	if !foundTestCheck {
+		t.Error("test check not found in report")
+	}
+}
+
 
 
 
