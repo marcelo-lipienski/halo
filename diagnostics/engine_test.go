@@ -2335,3 +2335,37 @@ services:
 		t.Error("expected to find service config missing error check result")
 	}
 }
+
+func TestGetPermissionMitigation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		resFile := getPermissionMitigation("C:\\temp\\file.txt", false, false)
+		expectedFile := `Run: icacls "C:\\temp\\file.txt" /grant Users:R`
+		if resFile != expectedFile {
+			t.Errorf("expected %q, got %q", expectedFile, resFile)
+		}
+
+		resDir := getPermissionMitigation("C:\\temp\\dir", true, true)
+		expectedDir := `Run: icacls "C:\\temp\\dir" /grant Users:M`
+		if resDir != expectedDir {
+			t.Errorf("expected %q, got %q", expectedDir, resDir)
+		}
+	} else {
+		resFile := getPermissionMitigation("/tmp/file.txt", false, false)
+		expectedFile := "Run: chmod u+r /tmp/file.txt or sudo chown $USER /tmp/file.txt"
+		if resFile != expectedFile {
+			t.Errorf("expected %q, got %q", expectedFile, resFile)
+		}
+
+		resDir := getPermissionMitigation("/tmp/dir", false, true)
+		expectedDir := "Run: chmod u+rx /tmp/dir or sudo chown $USER /tmp/dir"
+		if resDir != expectedDir {
+			t.Errorf("expected %q, got %q", expectedDir, resDir)
+		}
+
+		resWrite := getPermissionMitigation("/tmp/dir", true, true)
+		expectedWrite := "Run: chmod u+rwx /tmp/dir or sudo chown $USER /tmp/dir"
+		if resWrite != expectedWrite {
+			t.Errorf("expected %q, got %q", expectedWrite, resWrite)
+		}
+	}
+}

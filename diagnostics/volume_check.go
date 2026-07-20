@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -142,7 +143,7 @@ func (e *Engine) checkReadPermission(results []output.CheckResult, hostPath, vol
 		if !info.IsDir() {
 			newMode = 0644
 		}
-		if chmodErr := os.Chmod(hostPath, newMode); chmodErr == nil {
+		if chmodErr := fixPermissions(hostPath, newMode); chmodErr == nil {
 			// Re-verify after chmod — chmod may succeed but the path could still be
 			// unreadable if the current user does not own it (e.g. root-owned volume).
 			if r, reVerifyErr := isReadable(hostPath); r && reVerifyErr == nil {
@@ -170,7 +171,7 @@ func (e *Engine) checkReadPermission(results []output.CheckResult, hostPath, vol
 		Name:       fmt.Sprintf("Volume read lockout: %s", volSource),
 		Status:     output.CheckFailed,
 		Error:      errStr,
-		Mitigation: fmt.Sprintf("Run: chmod -R u+r %s or sudo chown -R $USER %s", hostPath, hostPath),
+		Mitigation: getPermissionMitigation(hostPath, false, info.IsDir()),
 	})
 	return results, false
 }
@@ -189,16 +190,12 @@ func (e *Engine) checkWritePermission(results []output.CheckResult, hostPath, vo
 	}
 
 	if e.DryRun {
-		newMode := os.FileMode(0755)
-		if !info.IsDir() {
-			newMode = 0644
-		}
 		results = append(results, output.CheckResult{
 			Group:      "Volume & File Permissions",
 			Name:       fmt.Sprintf("Volume permission lockout: %s", volSource),
 			Status:     output.CheckFailed,
-			Error:      fmt.Sprintf("[Dry-Run] Would apply chmod %s to %s '%s'", newMode, pathType, hostPath),
-			Mitigation: fmt.Sprintf("Run: chmod -R u+rw %s or sudo chown -R $USER %s", hostPath, hostPath),
+			Error:      fmt.Sprintf("[Dry-Run] Would apply permissions to %s '%s'", pathType, hostPath),
+			Mitigation: getPermissionMitigation(hostPath, true, info.IsDir()),
 		})
 		return results
 	}
@@ -218,7 +215,7 @@ func (e *Engine) checkWritePermission(results []output.CheckResult, hostPath, vo
 		if !info.IsDir() {
 			mode = 0644
 		}
-		if chmodErr := os.Chmod(hostPath, mode); chmodErr == nil {
+		if chmodErr := fixPermissions(hostPath, mode); chmodErr == nil {
 			if w, _ := isWritable(hostPath); w {
 				results = append(results, output.CheckResult{
 					Group:  "Volume & File Permissions",
@@ -239,7 +236,7 @@ func (e *Engine) checkWritePermission(results []output.CheckResult, hostPath, vo
 		Name:       fmt.Sprintf("Volume permission lockout: %s", volSource),
 		Status:     output.CheckFailed,
 		Error:      errStr,
-		Mitigation: fmt.Sprintf("Run: chmod -R u+rw %s or sudo chown -R $USER %s", hostPath, hostPath),
+		Mitigation: getPermissionMitigation(hostPath, true, info.IsDir()),
 	})
 	return results
 }
@@ -550,8 +547,8 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 					Group:      "Volume & File Permissions",
 					Name:       fmt.Sprintf("Secret read lockout: %s", secName),
 					Status:     output.CheckFailed,
-					Error:      fmt.Sprintf("[Dry-Run] Would apply chmod 0600 to secret file '%s'", secretPath),
-					Mitigation: fmt.Sprintf("Run: chmod u+r %s or sudo chown $USER %s", secretPath, secretPath),
+					Error:      fmt.Sprintf("[Dry-Run] Would apply permissions to secret file '%s'", secretPath),
+					Mitigation: getPermissionMitigation(secretPath, false, false),
 				})
 				continue
 			}
@@ -562,7 +559,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 			}
 
 			if shouldFix && confirmed {
-				if chmodErr := os.Chmod(secretPath, 0600); chmodErr == nil {
+				if chmodErr := fixPermissions(secretPath, 0600); chmodErr == nil {
 					results = append(results, output.CheckResult{
 						Group:  "Volume & File Permissions",
 						Name:   fmt.Sprintf("Secret permissions auto-fixed: %s", secName),
@@ -578,7 +575,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				Name:       fmt.Sprintf("Secret read lockout: %s", secName),
 				Status:     output.CheckFailed,
 				Error:      fmt.Sprintf("Secret file '%s' is not readable by current host user. System error: %v", secretPath, err),
-				Mitigation: fmt.Sprintf("Run: chmod u+r %s or sudo chown $USER %s", secretPath, secretPath),
+				Mitigation: getPermissionMitigation(secretPath, false, false),
 			})
 		} else {
 			_ = f.Close()
@@ -691,8 +688,8 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 					Group:      "Volume & File Permissions",
 					Name:       fmt.Sprintf("Config read lockout: %s", cfgName),
 					Status:     output.CheckFailed,
-					Error:      fmt.Sprintf("[Dry-Run] Would apply chmod 0644 to config file '%s'", cfgPath),
-					Mitigation: fmt.Sprintf("Run: chmod u+r %s or sudo chown $USER %s", cfgPath, cfgPath),
+					Error:      fmt.Sprintf("[Dry-Run] Would apply permissions to config file '%s'", cfgPath),
+					Mitigation: getPermissionMitigation(cfgPath, false, false),
 				})
 				continue
 			}
@@ -703,7 +700,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 			}
 
 			if shouldFix && confirmed {
-				if chmodErr := os.Chmod(cfgPath, 0644); chmodErr == nil {
+				if chmodErr := fixPermissions(cfgPath, 0644); chmodErr == nil {
 					results = append(results, output.CheckResult{
 						Group:  "Volume & File Permissions",
 						Name:   fmt.Sprintf("Config permissions auto-fixed: %s", cfgName),
@@ -719,7 +716,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				Name:       fmt.Sprintf("Config read lockout: %s", cfgName),
 				Status:     output.CheckFailed,
 				Error:      fmt.Sprintf("Config file '%s' is not readable by current host user. System error: %v", cfgPath, err),
-				Mitigation: fmt.Sprintf("Run: chmod u+r %s or sudo chown $USER %s", cfgPath, cfgPath),
+				Mitigation: getPermissionMitigation(cfgPath, false, false),
 			})
 		} else {
 			_ = f.Close()
@@ -833,8 +830,8 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 						Group:      "Volume & File Permissions",
 						Name:       fmt.Sprintf("Env file read lockout: %s", ef.File),
 						Status:     output.CheckFailed,
-						Error:      fmt.Sprintf("[Dry-Run] Would apply chmod 0644 to env file '%s'", envFilePath),
-						Mitigation: fmt.Sprintf("Run: chmod u+r %s or sudo chown $USER %s", envFilePath, envFilePath),
+						Error:      fmt.Sprintf("[Dry-Run] Would apply permissions to env file '%s'", envFilePath),
+						Mitigation: getPermissionMitigation(envFilePath, false, false),
 					})
 					continue
 				}
@@ -845,7 +842,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				}
 
 				if shouldFix && confirmed {
-					if chmodErr := os.Chmod(envFilePath, 0644); chmodErr == nil {
+					if chmodErr := fixPermissions(envFilePath, 0644); chmodErr == nil {
 						results = append(results, output.CheckResult{
 							Group:  "Volume & File Permissions",
 							Name:   fmt.Sprintf("Env file permissions auto-fixed: %s", ef.File),
@@ -861,7 +858,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 					Name:       fmt.Sprintf("Env file read lockout: %s", ef.File),
 					Status:     output.CheckFailed,
 					Error:      fmt.Sprintf("Env file '%s' is not readable by current host user. System error: %v", envFilePath, err),
-					Mitigation: fmt.Sprintf("Run: chmod u+r %s or sudo chown $USER %s", envFilePath, envFilePath),
+					Mitigation: getPermissionMitigation(envFilePath, false, false),
 				})
 			} else {
 				_ = f.Close()
@@ -931,4 +928,29 @@ func isExternal(ext interface{}) bool {
 		return true
 	}
 	return false
+}
+
+func fixPermissions(path string, perm os.FileMode) error {
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command("icacls", path, "/grant", "Users:M")
+		return cmd.Run()
+	}
+	return os.Chmod(path, perm)
+}
+
+func getPermissionMitigation(path string, isWrite bool, isDir bool) string {
+	if runtime.GOOS == "windows" {
+		perm := "R"
+		if isWrite {
+			perm = "M"
+		}
+		return fmt.Sprintf("Run: icacls %q /grant Users:%s", path, perm)
+	}
+	cmd := "u+r"
+	if isWrite {
+		cmd = "u+rwx"
+	} else if isDir {
+		cmd = "u+rx"
+	}
+	return fmt.Sprintf("Run: chmod %s %s or sudo chown $USER %s", cmd, path, path)
 }
