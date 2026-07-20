@@ -295,9 +295,13 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 	if envPath == "" {
 		envPath = filepath.Join(e.ConfigDir, ".env")
 	}
-	examplePath2 := filepath.Join(filepath.Dir(envPath), ".env.example")
-	driftResults, _ := CheckEnvExampleDrift(envPath, examplePath2)
-	results = append(results, driftResults...)
+	// Only run drift check when .env exists on disk — the engine may operate with
+	// an in-memory env map that has no corresponding file (e.g. in tests or CI).
+	if _, statErr := os.Stat(envPath); statErr == nil {
+		examplePath2 := filepath.Join(filepath.Dir(envPath), ".env.example")
+		driftResults, _ := CheckEnvExampleDrift(envPath, examplePath2)
+		results = append(results, driftResults...)
+	}
 
 	return results
 }

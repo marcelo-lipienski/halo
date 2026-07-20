@@ -421,7 +421,6 @@ services:
 
 func TestCLIInit(t *testing.T) {
 	tmpDir := t.TempDir()
-	envPath := filepath.Join(tmpDir, ".env")
 	examplePath := filepath.Join(tmpDir, ".env.example")
 
 	exampleContent := "KEY1=value1\nKEY2=<required>\n"
@@ -430,7 +429,7 @@ func TestCLIInit(t *testing.T) {
 	}
 
 	stdout, stderr, code := runInProcess([]string{"init", "--config-dir", tmpDir})
-	
+
 	if code != 0 {
 		t.Errorf("expected exit code 0, got %d", code)
 	}

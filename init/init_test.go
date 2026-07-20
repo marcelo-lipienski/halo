@@ -52,7 +52,7 @@ func TestMergeEnvFiles(t *testing.T) {
 DB_URL=<required>
 DB_PORT=5432
 `,
-			targetExists: false,
+			targetExists:  false,
 			expectedAdded: []string{"DB_URL", "DB_PORT"},
 			expectedTotal: 2,
 			expectedOutput: `
@@ -62,7 +62,7 @@ DB_PORT=5432
 `,
 		},
 		{
-			name: "Idempotent init",
+			name:           "Idempotent init",
 			exampleContent: `DB_URL=<required>`,
 			targetContent:  `DB_URL=postgres://localhost`,
 			targetExists:   true,
@@ -76,10 +76,10 @@ DB_PORT=5432
 DB_URL=<required>
 DB_PORT=5432
 `,
-			targetContent:  `DB_URL=postgres://localhost`,
-			targetExists:   true,
-			expectedAdded:  []string{"DB_PORT"},
-			expectedTotal:  1,
+			targetContent: `DB_URL=postgres://localhost`,
+			targetExists:  true,
+			expectedAdded: []string{"DB_PORT"},
+			expectedTotal: 1,
 			expectedOutput: `DB_URL=postgres://localhost
 
 # Added by halo init
@@ -87,7 +87,7 @@ DB_PORT=5432
 `,
 		},
 		{
-			name: "Dry run",
+			name:           "Dry run",
 			exampleContent: `DB_URL=<required>`,
 			targetExists:   false,
 			dryRun:         true,

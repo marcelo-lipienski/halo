@@ -539,7 +539,7 @@ func executeInit() int {
 		// I will just use "✓ .env does not exist..." or maybe just skip the prefix if not requested, but let's be nice.
 		// Wait, the instructions only mention "If .env does NOT exist: copy .env.example to .env verbatim, preserving comments, ordering, and blank lines. Report all keys copied."
 	}
-	
+
 	if len(res.Added) == 0 {
 		fmt.Fprintf(stdout, "✓ .env is up to date with .env.example — no keys to add.\n")
 		return 0
@@ -565,6 +565,6 @@ func executeInit() int {
 			fmt.Fprintf(stdout, "\n%d keys need values before running. Open .env in your editor.\n", placeholders)
 		}
 	}
-	
+
 	return 0
 }
