@@ -8,6 +8,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-07-20
+
+### Added
+- Native Windows permission fixes using `icacls` (Modify permission grants) and Windows-specific diagnostic mitigations.
+- Service-level `secrets` and `configs` declarations mapping validation check.
+- High-coverage, in-process CLI test harness (substantially reducing test runtime and boosting coverage to >80%).
+
+### Fixed
+- Graceful degradation when the Docker daemon is offline/unreachable: network reachability checks are downgraded to warnings instead of hard system failures, allowing offline diagnostics to complete.
+
+## [0.3.0] — 2026-07-20
+
+### Added
+- `--watch` / `-w` flag: enables real-time configuration monitoring (including service-level env files, override files, and deletions) with clear-screen re-runs.
+- `--interactive` / `-i` flag: thread-safe interactive mitigation prompts for confirming auto-fixes before execution.
+- Host port collision process identification: resolves and prints PID and command name of processes occupying blocked ports.
+- Sensitive data redaction: post-processes check results to filter and redact credentials/keys containing sensitive keywords.
+- Service-level `.env` validation: supports parsing and validating env files defined per service.
+
 ## [0.2.4] — 2026-07-20
 
 ### Fixed
@@ -78,7 +97,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Mitigation strings use `docker compose` (modern CLI) instead of the deprecated `docker-compose`.
 - `exitWithSystemFailure` now respects the `--verbose` flag consistently.
 
-[Unreleased]: https://github.com/marcelo-lipienski/halo/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/marcelo-lipienski/halo/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/marcelo-lipienski/halo/compare/v0.3.0...v1.0.0
+[0.3.0]: https://github.com/marcelo-lipienski/halo/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/marcelo-lipienski/halo/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/marcelo-lipienski/halo/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/marcelo-lipienski/halo/compare/v0.2.0...v0.2.2
