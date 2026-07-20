@@ -2101,6 +2101,66 @@ services:
 	}
 }
 
+func TestEnginePortCollisionProcessName(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web:
+    image: nginx
+    ports:
+      - "8080:80"
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{}, nil
+		},
+	}
+
+	// Mock port collision: bind 8080 so checking it fails
+	l, err := net.Listen("tcp", "127.0.0.1:8080")
+	if err != nil {
+		t.Fatalf("failed to listen on 8080: %v", err)
+	}
+	defer func() { _ = l.Close() }()
+
+	// Stub getOccupyingProcessFunc to return mock values
+	origGetOccupyingProcessFunc := getOccupyingProcessFunc
+	defer func() { getOccupyingProcessFunc = origGetOccupyingProcessFunc }()
+
+	getOccupyingProcessFunc = func(port string, proto string) (string, int, error) {
+		return "test-nginx", 9999, nil
+	}
+
+	engine := NewEngine(tempDir, composePath, map[string]string{}, comp, mockDocker)
+	report := engine.Run(context.Background())
+
+	foundCollision := false
+	for _, check := range report.Checks {
+		if check.Group == "Network & Port Availability" && check.Status == output.CheckFailed && strings.Contains(check.Name, "Port Collision") {
+			foundCollision = true
+			if !strings.Contains(check.Error, "occupied by 'test-nginx' (PID 9999)") {
+				t.Errorf("expected error message to contain process name and PID, got: %q", check.Error)
+			}
+			if !strings.Contains(check.Mitigation, "Stop the process 'test-nginx' (PID 9999)") {
+				t.Errorf("expected mitigation to contain process name and PID, got: %q", check.Mitigation)
+			}
+		}
+	}
+	if !foundCollision {
+		t.Errorf("expected to find port collision failure in checks: %+v", report.Checks)
+	}
+}
+
 
 
 

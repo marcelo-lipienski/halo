@@ -1,11 +1,15 @@
 package diagnostics
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -214,12 +218,18 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 				if checkSinglePortCollision(pStr, proto) {
 					servicesWithCollisions[svcName] = true
 					portCollisionPassed = false
+					errStr := fmt.Sprintf("Port %s (%s) mapped for service %s is already occupied on the host", pStr, proto, svcName)
+					mitigation := fmt.Sprintf("Stop the process occupying port %s or change the host port mapping in docker-compose.yml", pStr)
+					if procName, pid, err := getOccupyingProcessFunc(pStr, proto); err == nil {
+						errStr = fmt.Sprintf("Port %s (%s) mapped for service %s is occupied by '%s' (PID %d) on the host", pStr, proto, svcName, procName, pid)
+						mitigation = fmt.Sprintf("Stop the process '%s' (PID %d) occupying port %s or change the host port mapping in docker-compose.yml", procName, pid, pStr)
+					}
 					results = append(results, output.CheckResult{
 						Group:      "Network & Port Availability",
 						Name:       fmt.Sprintf("Port Collision %s:%s", svcName, pStr),
 						Status:     output.CheckFailed,
-						Error:      fmt.Sprintf("Port %s (%s) mapped for service %s is already occupied on the host", pStr, proto, svcName),
-						Mitigation: fmt.Sprintf("Stop the process occupying port %s or change the host port mapping in docker-compose.yml", pStr),
+						Error:      errStr,
+						Mitigation: mitigation,
 					})
 				}
 			}
@@ -382,4 +392,100 @@ func isPortBindError(errStr string) bool {
 		strings.Contains(errStr, "allocat") ||
 		strings.Contains(errStr, "already in use") ||
 		strings.Contains(errStr, "connectivity")
+}
+
+var getOccupyingProcessFunc = func(port string, proto string) (string, int, error) {
+	if runtime.GOOS == "windows" {
+		cmd := exec.Command("netstat", "-ano")
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		if err := cmd.Run(); err != nil {
+			return "", 0, err
+		}
+		lines := strings.Split(out.String(), "\n")
+		pid := 0
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			if !strings.HasPrefix(strings.ToLower(line), strings.ToLower(proto)) {
+				continue
+			}
+			fields := strings.Fields(line)
+			if len(fields) >= 4 {
+				localAddr := fields[1]
+				if strings.HasSuffix(localAddr, ":"+port) || strings.HasSuffix(localAddr, "]:"+port) {
+					pidStr := fields[len(fields)-1]
+					if p, err := strconv.Atoi(pidStr); err == nil {
+						pid = p
+						break
+					}
+				}
+			}
+		}
+		if pid == 0 {
+			return "", 0, fmt.Errorf("no process found on port %s", port)
+		}
+
+		cmd2 := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/NH")
+		var out2 bytes.Buffer
+		cmd2.Stdout = &out2
+		if err := cmd2.Run(); err == nil {
+			parts := strings.Split(out2.String(), ",")
+			if len(parts) > 0 {
+				procName := strings.Trim(parts[0], `"`)
+				return procName, pid, nil
+			}
+		}
+		return "Unknown", pid, nil
+	}
+
+	lsofProto := proto
+	cmd := exec.Command("lsof", "-i", fmt.Sprintf("%s:%s", lsofProto, port), "-F", "pc")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err == nil {
+		lines := strings.Split(out.String(), "\n")
+		var pid int
+		var name string
+		for _, line := range lines {
+			if strings.HasPrefix(line, "p") {
+				if p, err := strconv.Atoi(line[1:]); err == nil {
+					pid = p
+				}
+			} else if strings.HasPrefix(line, "c") {
+				name = line[1:]
+			}
+		}
+		if pid > 0 && name != "" {
+			return name, pid, nil
+		}
+	}
+
+	if runtime.GOOS == "linux" {
+		ssFlag := "-lptn"
+		if proto == "udp" {
+			ssFlag = "-lpun"
+		}
+		cmd := exec.Command("ss", ssFlag, "sport = :"+port)
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		if err := cmd.Run(); err == nil {
+			lines := strings.Split(out.String(), "\n")
+			for _, line := range lines {
+				if strings.Contains(line, "pid=") {
+					re := regexp.MustCompile(`users:\(\("([^"]+)",pid=(\d+)`)
+					matches := re.FindStringSubmatch(line)
+					if len(matches) == 3 {
+						if p, err := strconv.Atoi(matches[2]); err == nil {
+							return matches[1], p, nil
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return "", 0, fmt.Errorf("no occupying process found")
 }
