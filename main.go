@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -22,6 +23,10 @@ import (
 var (
 	Version   = "dev"
 	CommitSHA = "unknown"
+
+	osExit           = os.Exit
+	stdout io.Writer = os.Stdout
+	stderr io.Writer = os.Stderr
 )
 
 func printVersion() {
@@ -65,11 +70,11 @@ func printVersion() {
 	}
 
 	if commit != "unknown" {
-		fmt.Printf("halo version %s (%s)\n", version, commit)
+		fmt.Fprintf(stdout, "halo version %s (%s)\n", version, commit)
 	} else {
-		fmt.Printf("halo version %s\n", version)
+		fmt.Fprintf(stdout, "halo version %s\n", version)
 	}
-	fmt.Printf("Go runtime:  %s (%s/%s)\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	fmt.Fprintf(stdout, "Go runtime:  %s (%s/%s)\n", runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }
 
 var (
@@ -85,16 +90,16 @@ var (
 	watch        bool
 )
 
-func main() {
+func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "halo",
 		Short: "halo diagnoses local development environments",
 		Long:  `halo is a lightweight CLI tool to diagnose and validate local development environments by analyzing environment configurations and active Docker state.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if watch {
-				runWatch()
+				runWatch(context.Background())
 			} else {
-				os.Exit(executeCheck())
+				osExit(executeCheck())
 			}
 		},
 	}
@@ -117,9 +122,9 @@ func main() {
 		Short: "Run the diagnostic suite",
 		Run: func(cmd *cobra.Command, args []string) {
 			if watch {
-				runWatch()
+				runWatch(context.Background())
 			} else {
-				os.Exit(executeCheck())
+				osExit(executeCheck())
 			}
 		},
 	}
@@ -136,15 +141,19 @@ func main() {
 	rootCmd.AddCommand(checkCmd)
 	rootCmd.AddCommand(versionCmd)
 
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
+	return rootCmd
+}
+
+func main() {
+	if err := newRootCmd().Execute(); err != nil {
+		osExit(1)
 	}
 }
 
 func executeCheck() int {
 	format = strings.ToLower(format)
 	if format != "text" && format != "json" {
-		fmt.Fprintf(os.Stderr, "Invalid format: %s. Supported formats: text, json\n", format)
+		fmt.Fprintf(stderr, "Invalid format: %s. Supported formats: text, json\n", format)
 		return 1
 	}
 
@@ -272,9 +281,9 @@ func executeCheck() int {
 
 	if !quiet {
 		if format == "json" {
-			_ = output.RenderJSON(os.Stdout, report)
+			_ = output.RenderJSON(stdout, report)
 		} else {
-			output.RenderText(os.Stdout, report, verbose)
+			output.RenderText(stdout, report, verbose)
 		}
 	}
 
@@ -299,12 +308,12 @@ func renderSystemFailure(format string, verbose bool, errStr, mitigationStr stri
 		},
 	}
 	if quiet {
-		fmt.Fprintf(os.Stderr, "Error: %s\nMitigation: %s\n", errStr, mitigationStr)
+		fmt.Fprintf(stderr, "Error: %s\nMitigation: %s\n", errStr, mitigationStr)
 	} else {
 		if format == "json" {
-			_ = output.RenderJSON(os.Stdout, report)
+			_ = output.RenderJSON(stdout, report)
 		} else {
-			output.RenderText(os.Stdout, report, verbose)
+			output.RenderText(stdout, report, verbose)
 		}
 	}
 }
@@ -397,7 +406,7 @@ func getWatchFiles() []string {
 	return deduped
 }
 
-func runWatch() {
+func runWatch(ctx context.Context) {
 	files := getWatchFiles()
 
 	// Initial run
@@ -412,45 +421,50 @@ func runWatch() {
 		}
 	}
 
-	fmt.Println("\nWatching for configuration changes... (Press Ctrl+C to stop)")
+	fmt.Fprintln(stdout, "\nWatching for configuration changes... (Press Ctrl+C to stop)")
 
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		changed := false
-		files = getWatchFiles()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			changed := false
+			files = getWatchFiles()
 
-		// 1. Detect deleted files from lastMods
-		currentFiles := make(map[string]bool)
-		for _, f := range files {
-			currentFiles[f] = true
-		}
-		for f := range lastMods {
-			if !currentFiles[f] {
-				delete(lastMods, f)
-				changed = true
+			// 1. Detect deleted files from lastMods
+			currentFiles := make(map[string]bool)
+			for _, f := range files {
+				currentFiles[f] = true
 			}
-		}
+			for f := range lastMods {
+				if !currentFiles[f] {
+					delete(lastMods, f)
+					changed = true
+				}
+			}
 
-		// 2. Detect modified or new files
-		for _, f := range files {
-			stat, err := os.Stat(f)
-			var modTime time.Time
-			if err == nil {
-				modTime = stat.ModTime()
+			// 2. Detect modified or new files
+			for _, f := range files {
+				stat, err := os.Stat(f)
+				var modTime time.Time
+				if err == nil {
+					modTime = stat.ModTime()
+				}
+				if !modTime.Equal(lastMods[f]) {
+					lastMods[f] = modTime
+					changed = true
+				}
 			}
-			if !modTime.Equal(lastMods[f]) {
-				lastMods[f] = modTime
-				changed = true
-			}
-		}
 
-		if changed {
-			fmt.Print("\033[H\033[2J")
-			fmt.Println("Change detected! Re-running diagnostics...")
-			_ = executeCheck()
-			fmt.Println("\nWatching for configuration changes... (Press Ctrl+C to stop)")
+			if changed {
+				fmt.Fprint(stdout, "\033[H\033[2J")
+				fmt.Fprintln(stdout, "Change detected! Re-running diagnostics...")
+				_ = executeCheck()
+				fmt.Fprintln(stdout, "\nWatching for configuration changes... (Press Ctrl+C to stop)")
+			}
 		}
 	}
 }
