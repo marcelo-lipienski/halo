@@ -201,10 +201,10 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 			// slow and risks exhausting the 2-second check group timeout.
 			if len(ports) > portRangeWarnThreshold {
 				results = append(results, output.CheckResult{
-					Group:  "Network & Port Availability",
-					Name:   fmt.Sprintf("Large port range %s (%s) for service %s", hostPortRange, proto, svcName),
-					Status: output.CheckWarning,
-					Error:  fmt.Sprintf("Port range %s maps %d ports for service %s. Scanning all ports may be slow and risk exceeding the check timeout.", hostPortRange, len(ports), svcName),
+					Group:      "Network & Port Availability",
+					Name:       fmt.Sprintf("Large port range %s (%s) for service %s", hostPortRange, proto, svcName),
+					Status:     output.CheckWarning,
+					Error:      fmt.Sprintf("Port range %s maps %d ports for service %s. Scanning all ports may be slow and risk exceeding the check timeout.", hostPortRange, len(ports), svcName),
 					Mitigation: fmt.Sprintf("Consider narrowing the port range in docker-compose.yml for service %s to fewer than %d ports.", svcName, portRangeWarnThreshold),
 				})
 			}

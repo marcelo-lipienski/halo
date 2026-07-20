@@ -611,9 +611,9 @@ services:
 
 func TestEngineLargePortRangeWarning(t *testing.T) {
 	cases := []struct {
-		name         string
-		portRange    string
-		expectWarn   bool
+		name       string
+		portRange  string
+		expectWarn bool
 	}{
 		{
 			name:       "range below threshold emits no warning",
@@ -1142,8 +1142,8 @@ services:
 
 func TestParseHostPortProto(t *testing.T) {
 	tests := []struct {
-		input        string
-		expectedPort string
+		input         string
+		expectedPort  string
 		expectedProto string
 	}{
 		{"8080:80", "8080", "tcp"},
@@ -1245,7 +1245,7 @@ configs:
 	_ = os.WriteFile(filepath.Join(tempDir, "sec.txt"), []byte("data"), 0600)
 	_ = os.WriteFile(filepath.Join(tempDir, "cfg.txt"), []byte("data"), 0644)
 	report2 := engine.Run(context.Background())
-	
+
 	// Ensure they pass now
 	hasSecretPass := false
 	hasConfigPass := false
@@ -2237,7 +2237,3 @@ services:
 		t.Error("test check not found in report")
 	}
 }
-
-
-
-

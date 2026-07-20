@@ -40,7 +40,6 @@ type ComposeConfigDef struct {
 	BaseDir  string
 }
 
-
 // UnmarshalYAML implements custom decoding for StringOrSlice
 func (ss *StringOrSlice) UnmarshalYAML(value *yaml.Node) error {
 	switch value.Kind {

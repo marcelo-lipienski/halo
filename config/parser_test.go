@@ -291,7 +291,7 @@ func TestMergeComposeConfigs(t *testing.T) {
 			"web": {
 				Image: "nginx:latest",
 				Environment: ComposeEnvironment{
-					"PORT": "80",
+					"PORT":  "80",
 					"DEBUG": "true",
 				},
 				Ports: ComposePorts{"80:80"},
@@ -310,7 +310,7 @@ func TestMergeComposeConfigs(t *testing.T) {
 			"web": {
 				Image: "nginx:alpine",
 				Environment: ComposeEnvironment{
-					"DEBUG": "false",
+					"DEBUG":   "false",
 					"NEW_VAR": "value",
 				},
 				Ports: ComposePorts{"443:443"},
@@ -649,4 +649,3 @@ func TestMergeComposeConfigsWithEnvFiles(t *testing.T) {
 		t.Errorf("unexpected merged env_files: %+v", web.EnvFiles)
 	}
 }
-
