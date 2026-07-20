@@ -869,6 +869,39 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 		}
 	}
 
+	// 5. Service Secrets & Configs Mapping Check
+	for _, svcName := range svcNames {
+		svc := e.Compose.Services[svcName]
+
+		// Validate Secrets
+		for _, s := range svc.Secrets {
+			if _, exists := e.Compose.Secrets[s.Source]; !exists {
+				volumeCheckPassed = false
+				results = append(results, output.CheckResult{
+					Group:      "Volume & File Permissions",
+					Name:       fmt.Sprintf("Service %s secret missing: %s", svcName, s.Source),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("Service %s references secret '%s' which is not defined in the top-level secrets block", svcName, s.Source),
+					Mitigation: fmt.Sprintf("Define secret '%s' in the root-level secrets block of your docker-compose.yml", s.Source),
+				})
+			}
+		}
+
+		// Validate Configs
+		for _, c := range svc.Configs {
+			if _, exists := e.Compose.Configs[c.Source]; !exists {
+				volumeCheckPassed = false
+				results = append(results, output.CheckResult{
+					Group:      "Volume & File Permissions",
+					Name:       fmt.Sprintf("Service %s config missing: %s", svcName, c.Source),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("Service %s references config '%s' which is not defined in the top-level configs block", svcName, c.Source),
+					Mitigation: fmt.Sprintf("Define config '%s' in the root-level configs block of your docker-compose.yml", c.Source),
+				})
+			}
+		}
+	}
+
 	if volumeCheckPassed {
 		results = append(results, output.CheckResult{
 			Group:  "Volume & File Permissions",

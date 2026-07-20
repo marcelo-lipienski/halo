@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -154,16 +155,102 @@ func (cef *ComposeEnvFiles) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// ComposeServiceSecret represents a service secret mapping entry
+type ComposeServiceSecret struct {
+	Source string `yaml:"source"`
+	Target string `yaml:"target"`
+}
+
+// ComposeServiceSecrets represents a custom type for unmarshaling service secrets
+type ComposeServiceSecrets []ComposeServiceSecret
+
+// UnmarshalYAML implements custom decoding for ComposeServiceSecrets
+func (css *ComposeServiceSecrets) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		var s string
+		if err := value.Decode(&s); err != nil {
+			return err
+		}
+		*css = []ComposeServiceSecret{{Source: s}}
+	case yaml.SequenceNode:
+		for _, node := range value.Content {
+			switch node.Kind {
+			case yaml.ScalarNode:
+				var s string
+				if err := node.Decode(&s); err != nil {
+					return err
+				}
+				*css = append(*css, ComposeServiceSecret{Source: s})
+			case yaml.MappingNode:
+				var m struct {
+					Source string `yaml:"source"`
+					Target string `yaml:"target"`
+				}
+				if err := node.Decode(&m); err != nil {
+					return err
+				}
+				*css = append(*css, ComposeServiceSecret{Source: m.Source, Target: m.Target})
+			}
+		}
+	}
+	return nil
+}
+
+// ComposeServiceConfig represents a service config mapping entry
+type ComposeServiceConfig struct {
+	Source string `yaml:"source"`
+	Target string `yaml:"target"`
+}
+
+// ComposeServiceConfigs represents a custom type for unmarshaling service configs
+type ComposeServiceConfigs []ComposeServiceConfig
+
+// UnmarshalYAML implements custom decoding for ComposeServiceConfigs
+func (csc *ComposeServiceConfigs) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		var s string
+		if err := value.Decode(&s); err != nil {
+			return err
+		}
+		*csc = []ComposeServiceConfig{{Source: s}}
+	case yaml.SequenceNode:
+		for _, node := range value.Content {
+			switch node.Kind {
+			case yaml.ScalarNode:
+				var s string
+				if err := node.Decode(&s); err != nil {
+					return err
+				}
+				*csc = append(*csc, ComposeServiceConfig{Source: s})
+			case yaml.MappingNode:
+				var m struct {
+					Source string `yaml:"source"`
+					Target string `yaml:"target"`
+				}
+				if err := node.Decode(&m); err != nil {
+					return err
+				}
+				*csc = append(*csc, ComposeServiceConfig{Source: m.Source, Target: m.Target})
+			}
+		}
+	}
+	return nil
+}
+
 // ComposeService represents a service inside docker-compose.yml
 type ComposeService struct {
-	Environment   ComposeEnvironment `yaml:"environment"`
-	Ports         ComposePorts       `yaml:"ports"`
-	Volumes       []ComposeVolume    `yaml:"volumes"`
-	EnvFiles      ComposeEnvFiles    `yaml:"env_file"`
-	Image         string             `yaml:"image"`
-	ContainerName string             `yaml:"container_name"`
-	Entrypoint    StringOrSlice      `yaml:"entrypoint"`
-	Command       StringOrSlice      `yaml:"command"`
+	Environment   ComposeEnvironment    `yaml:"environment"`
+	Ports         ComposePorts          `yaml:"ports"`
+	Volumes       []ComposeVolume       `yaml:"volumes"`
+	EnvFiles      ComposeEnvFiles       `yaml:"env_file"`
+	Secrets       ComposeServiceSecrets `yaml:"secrets"`
+	Configs       ComposeServiceConfigs `yaml:"configs"`
+	Image         string                `yaml:"image"`
+	ContainerName string                `yaml:"container_name"`
+	Entrypoint    StringOrSlice         `yaml:"entrypoint"`
+	Command       StringOrSlice         `yaml:"command"`
 }
 
 // ComposeEnvironment is a custom map type to handle both string slice and map syntax for env vars
@@ -406,6 +493,44 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 
 			// EnvFiles: append list
 			destSvc.EnvFiles = append(destSvc.EnvFiles, srcSvc.EnvFiles...)
+
+			// Secrets: merge by Source, latter overrides former
+			if len(srcSvc.Secrets) > 0 {
+				secretMap := make(map[string]ComposeServiceSecret)
+				for _, s := range destSvc.Secrets {
+					secretMap[s.Source] = s
+				}
+				for _, s := range srcSvc.Secrets {
+					secretMap[s.Source] = s
+				}
+				var mergedSecrets []ComposeServiceSecret
+				for _, s := range secretMap {
+					mergedSecrets = append(mergedSecrets, s)
+				}
+				sort.Slice(mergedSecrets, func(i, j int) bool {
+					return mergedSecrets[i].Source < mergedSecrets[j].Source
+				})
+				destSvc.Secrets = mergedSecrets
+			}
+
+			// Configs: merge by Source, latter overrides former
+			if len(srcSvc.Configs) > 0 {
+				configMap := make(map[string]ComposeServiceConfig)
+				for _, c := range destSvc.Configs {
+					configMap[c.Source] = c
+				}
+				for _, c := range srcSvc.Configs {
+					configMap[c.Source] = c
+				}
+				var mergedConfigs []ComposeServiceConfig
+				for _, c := range configMap {
+					mergedConfigs = append(mergedConfigs, c)
+				}
+				sort.Slice(mergedConfigs, func(i, j int) bool {
+					return mergedConfigs[i].Source < mergedConfigs[j].Source
+				})
+				destSvc.Configs = mergedConfigs
+			}
 
 			// Volumes: latter overrides former if container target path is the same.
 			// Anonymous volumes (empty Target) are always appended without de-duplication.

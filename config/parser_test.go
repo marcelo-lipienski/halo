@@ -649,3 +649,107 @@ func TestMergeComposeConfigsWithEnvFiles(t *testing.T) {
 		t.Errorf("unexpected merged env_files: %+v", web.EnvFiles)
 	}
 }
+
+func TestParseComposeSecretsConfigs(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web:
+    secrets:
+      - secret_a
+      - source: secret_b
+        target: /run/secrets/b
+    configs:
+      - config_a
+      - source: config_b
+        target: /etc/config_b
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose: %v", err)
+	}
+
+	cfg, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("unexpected error parsing compose: %v", err)
+	}
+
+	web, ok := cfg.Services["web"]
+	if !ok {
+		t.Fatal("web service not found")
+	}
+
+	if len(web.Secrets) != 2 {
+		t.Fatalf("expected 2 secrets, got %d", len(web.Secrets))
+	}
+	if web.Secrets[0].Source != "secret_a" {
+		t.Errorf("expected secret_a, got %s", web.Secrets[0].Source)
+	}
+	if web.Secrets[1].Source != "secret_b" || web.Secrets[1].Target != "/run/secrets/b" {
+		t.Errorf("unexpected secret_b layout: %+v", web.Secrets[1])
+	}
+
+	if len(web.Configs) != 2 {
+		t.Fatalf("expected 2 configs, got %d", len(web.Configs))
+	}
+	if web.Configs[0].Source != "config_a" {
+		t.Errorf("expected config_a, got %s", web.Configs[0].Source)
+	}
+	if web.Configs[1].Source != "config_b" || web.Configs[1].Target != "/etc/config_b" {
+		t.Errorf("unexpected config_b layout: %+v", web.Configs[1])
+	}
+}
+
+func TestMergeComposeConfigsSecretsConfigs(t *testing.T) {
+	cfg1 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				Secrets: ComposeServiceSecrets{
+					{Source: "secret_a", Target: "/run/secrets/a"},
+				},
+				Configs: ComposeServiceConfigs{
+					{Source: "config_a", Target: "/etc/a"},
+				},
+			},
+		},
+	}
+	cfg2 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				Secrets: ComposeServiceSecrets{
+					{Source: "secret_a", Target: "/run/secrets/a_new"},
+					{Source: "secret_b"},
+				},
+				Configs: ComposeServiceConfigs{
+					{Source: "config_a", Target: "/etc/a_new"},
+					{Source: "config_b"},
+				},
+			},
+		},
+	}
+
+	merged := MergeComposeConfigs(cfg1, cfg2)
+	web := merged.Services["web"]
+
+	// Verify secrets (should merge and overwrite by Source, sorted alphabetically)
+	if len(web.Secrets) != 2 {
+		t.Fatalf("expected 2 merged secrets, got %d", len(web.Secrets))
+	}
+	if web.Secrets[0].Source != "secret_a" || web.Secrets[0].Target != "/run/secrets/a_new" {
+		t.Errorf("unexpected secret 0: %+v", web.Secrets[0])
+	}
+	if web.Secrets[1].Source != "secret_b" {
+		t.Errorf("unexpected secret 1: %+v", web.Secrets[1])
+	}
+
+	// Verify configs (should merge and overwrite by Source, sorted alphabetically)
+	if len(web.Configs) != 2 {
+		t.Fatalf("expected 2 merged configs, got %d", len(web.Configs))
+	}
+	if web.Configs[0].Source != "config_a" || web.Configs[0].Target != "/etc/a_new" {
+		t.Errorf("unexpected config 0: %+v", web.Configs[0])
+	}
+	if web.Configs[1].Source != "config_b" {
+		t.Errorf("unexpected config 1: %+v", web.Configs[1])
+	}
+}

@@ -2277,3 +2277,61 @@ services:
 		t.Errorf("expected to find Docker Daemon Status check warning in report: %+v", report.Checks)
 	}
 }
+
+func TestEngineServiceSecretsConfigsMapping(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+
+	// Secrets and configs are declared on service but NOT in top-level sections
+	composeContent := `
+services:
+  app:
+    image: nginx
+    secrets:
+      - secret_a
+    configs:
+      - config_a
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	engine := NewEngine(tempDir, composePath, map[string]string{}, comp, nil)
+	report := engine.Run(context.Background())
+
+	if report.Status != output.StatusEnvironmentBroken {
+		t.Errorf("expected report status to be environment_broken, got: %s", report.Status)
+	}
+
+	foundSecretError := false
+	foundConfigError := false
+
+	for _, check := range report.Checks {
+		if check.Group == "Volume & File Permissions" {
+			if strings.Contains(check.Name, "secret missing") && check.Status == output.CheckFailed {
+				foundSecretError = true
+				if !strings.Contains(check.Error, "references secret 'secret_a' which is not defined") {
+					t.Errorf("unexpected secret error: %q", check.Error)
+				}
+			}
+			if strings.Contains(check.Name, "config missing") && check.Status == output.CheckFailed {
+				foundConfigError = true
+				if !strings.Contains(check.Error, "references config 'config_a' which is not defined") {
+					t.Errorf("unexpected config error: %q", check.Error)
+				}
+			}
+		}
+	}
+
+	if !foundSecretError {
+		t.Error("expected to find service secret missing error check result")
+	}
+	if !foundConfigError {
+		t.Error("expected to find service config missing error check result")
+	}
+}
