@@ -349,7 +349,52 @@ func getWatchFiles() []string {
 	if _, err := os.Stat(examplePath); err == nil {
 		files = append(files, examplePath)
 	}
-	return files
+
+	// Dynamic detection of service-level env_files
+	for _, file := range filesToLoad {
+		if comp, err := config.ParseCompose(file); err == nil {
+			for _, svc := range comp.Services {
+				for _, ef := range svc.EnvFiles {
+					resolvedPath := ef.File
+					if strings.Contains(resolvedPath, "$") {
+						resolvedPath = os.ExpandEnv(resolvedPath)
+					}
+					path := resolvedPath
+					if !filepath.IsAbs(path) {
+						baseDir := ef.BaseDir
+						if baseDir == "" {
+							baseDir = filepath.Dir(file)
+						}
+						path = filepath.Join(baseDir, path)
+					}
+					path = filepath.Clean(path)
+					if _, err := os.Stat(path); err == nil {
+						files = append(files, path)
+					}
+				}
+			}
+		}
+	}
+
+	// De-duplicate files using absolute paths
+	uniqueFiles := make(map[string]bool)
+	var deduped []string
+	for _, f := range files {
+		abs, err := filepath.Abs(f)
+		if err == nil {
+			if !uniqueFiles[abs] {
+				uniqueFiles[abs] = true
+				deduped = append(deduped, abs)
+			}
+		} else {
+			if !uniqueFiles[f] {
+				uniqueFiles[f] = true
+				deduped = append(deduped, f)
+			}
+		}
+	}
+
+	return deduped
 }
 
 func runWatch() {
@@ -375,6 +420,20 @@ func runWatch() {
 	for range ticker.C {
 		changed := false
 		files = getWatchFiles()
+
+		// 1. Detect deleted files from lastMods
+		currentFiles := make(map[string]bool)
+		for _, f := range files {
+			currentFiles[f] = true
+		}
+		for f := range lastMods {
+			if !currentFiles[f] {
+				delete(lastMods, f)
+				changed = true
+			}
+		}
+
+		// 2. Detect modified or new files
 		for _, f := range files {
 			stat, err := os.Stat(f)
 			var modTime time.Time
