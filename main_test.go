@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -57,5 +58,48 @@ func TestCLIQuietFlag(t *testing.T) {
 	}
 	if stderrNormal.Len() > 0 {
 		t.Errorf("expected stderr to be empty in normal mode when failing via exitWithSystemFailure output, got: %q", stderrNormal.String())
+	}
+}
+
+func TestGetWatchFiles(t *testing.T) {
+	tempDir := t.TempDir()
+
+	envPath := filepath.Join(tempDir, ".env")
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	examplePath := filepath.Join(tempDir, ".env.example")
+
+	_ = os.WriteFile(envPath, []byte(""), 0644)
+	_ = os.WriteFile(composePath, []byte(""), 0644)
+	_ = os.WriteFile(examplePath, []byte(""), 0644)
+
+	origConfigDir := configDir
+	origEnvFile := envFile
+	origComposeFiles := composeFiles
+	defer func() {
+		configDir = origConfigDir
+		envFile = origEnvFile
+		composeFiles = origComposeFiles
+	}()
+
+	configDir = tempDir
+	envFile = ""
+	composeFiles = nil
+
+	files := getWatchFiles()
+
+	expectedFiles := map[string]bool{
+		envPath:     true,
+		composePath: true,
+		examplePath: true,
+	}
+
+	if len(files) != 3 {
+		t.Fatalf("expected 3 watch files, got %d: %v", len(files), files)
+	}
+
+	for _, f := range files {
+		if !expectedFiles[f] {
+			t.Errorf("unexpected file in watch list: %s", f)
+		}
 	}
 }

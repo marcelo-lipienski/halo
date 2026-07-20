@@ -82,6 +82,7 @@ var (
 	quiet        bool
 	dryRun       bool
 	interactive  bool
+	watch        bool
 )
 
 func main() {
@@ -90,8 +91,11 @@ func main() {
 		Short: "halo diagnoses local development environments",
 		Long:  `halo is a lightweight CLI tool to diagnose and validate local development environments by analyzing environment configurations and active Docker state.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			// By default, running the root command executes the diagnostics checks (equivalent to "check" subcommand)
-			runCheck()
+			if watch {
+				runWatch()
+			} else {
+				os.Exit(executeCheck())
+			}
 		},
 	}
 
@@ -105,13 +109,18 @@ func main() {
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppresses all standard output")
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Preview changes when running with --fix without modifying the filesystem")
 	rootCmd.PersistentFlags().BoolVarP(&interactive, "interactive", "i", false, "Confirm mitigation steps interactively before applying them")
+	rootCmd.PersistentFlags().BoolVarP(&watch, "watch", "w", false, "Watch configuration files for changes and automatically re-run checks")
 
 	// check subcommand
 	checkCmd := &cobra.Command{
 		Use:   "check",
 		Short: "Run the diagnostic suite",
 		Run: func(cmd *cobra.Command, args []string) {
-			runCheck()
+			if watch {
+				runWatch()
+			} else {
+				os.Exit(executeCheck())
+			}
 		},
 	}
 
@@ -132,11 +141,11 @@ func main() {
 	}
 }
 
-func runCheck() {
+func executeCheck() int {
 	format = strings.ToLower(format)
 	if format != "text" && format != "json" {
 		fmt.Fprintf(os.Stderr, "Invalid format: %s. Supported formats: text, json\n", format)
-		os.Exit(1)
+		return 1
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -198,13 +207,15 @@ func runCheck() {
 	if len(missing) > 0 {
 		errStr := fmt.Sprintf("Missing configuration files: %s must exist.", strings.Join(missing, " and "))
 		mitigationStr := "Ensure your .env file and all specified docker-compose files are present at their specified paths."
-		exitWithSystemFailure(format, verbose, errStr, mitigationStr)
+		renderSystemFailure(format, verbose, errStr, mitigationStr)
+		return 1
 	}
 
 	if len(accessErrors) > 0 {
 		errStr := fmt.Sprintf("Unable to access configuration files: %s.", strings.Join(accessErrors, " and "))
 		mitigationStr := "Check file permissions and user privileges for the reported configuration files."
-		exitWithSystemFailure(format, verbose, errStr, mitigationStr)
+		renderSystemFailure(format, verbose, errStr, mitigationStr)
+		return 1
 	}
 
 	var parseErrs []error
@@ -230,7 +241,8 @@ func runCheck() {
 		} else {
 			mitigation = "Verify file syntax is valid."
 		}
-		exitWithSystemFailure(format, verbose, joinedErr.Error(), mitigation)
+		renderSystemFailure(format, verbose, joinedErr.Error(), mitigation)
+		return 1
 	}
 
 	// Merge all parsed configs according to docker-compose overrides rules
@@ -238,7 +250,8 @@ func runCheck() {
 
 	dockerCli, err := client.New(client.FromEnv)
 	if err != nil {
-		exitWithSystemFailure(format, verbose, fmt.Sprintf("Failed to create Docker client: %v", err), "Verify your Docker environment variables are set correctly.")
+		renderSystemFailure(format, verbose, fmt.Sprintf("Failed to create Docker client: %v", err), "Verify your Docker environment variables are set correctly.")
+		return 1
 	}
 	defer func() { _ = dockerCli.Close() }()
 
@@ -246,7 +259,8 @@ func runCheck() {
 	defer pingCancel()
 	_, err = dockerCli.Ping(pingCtx, client.PingOptions{})
 	if err != nil {
-		exitWithSystemFailure(format, verbose, fmt.Sprintf("Docker daemon is unreachable: %v", err), "Ensure Docker daemon/service is running and socket is accessible.")
+		renderSystemFailure(format, verbose, fmt.Sprintf("Docker daemon is unreachable: %v", err), "Ensure Docker daemon/service is running and socket is accessible.")
+		return 1
 	}
 
 	engineConfigDir := filepath.Dir(filesToLoad[0])
@@ -265,12 +279,12 @@ func runCheck() {
 	}
 
 	if report.Status == output.StatusEnvironmentBroken {
-		os.Exit(2)
+		return 2
 	}
-	os.Exit(0)
+	return 0
 }
 
-func exitWithSystemFailure(format string, verbose bool, errStr, mitigationStr string) {
+func renderSystemFailure(format string, verbose bool, errStr, mitigationStr string) {
 	report := &output.DiagnosticsReport{
 		Status:     output.StatusSystemFailure,
 		DurationMs: 0,
@@ -293,5 +307,91 @@ func exitWithSystemFailure(format string, verbose bool, errStr, mitigationStr st
 			output.RenderText(os.Stdout, report, verbose)
 		}
 	}
-	os.Exit(1)
+}
+
+func getWatchFiles() []string {
+	var files []string
+	envPath := envFile
+	if envPath == "" {
+		envPath = filepath.Join(configDir, ".env")
+	}
+	if _, err := os.Stat(envPath); err == nil {
+		files = append(files, envPath)
+	}
+
+	var filesToLoad []string
+	if len(composeFiles) > 0 {
+		filesToLoad = composeFiles
+	} else {
+		composePathYml := filepath.Join(configDir, "docker-compose.yml")
+		composePathYaml := filepath.Join(configDir, "docker-compose.yaml")
+		composePath := composePathYaml
+		if _, err := os.Stat(composePathYml); err == nil {
+			composePath = composePathYml
+		}
+		filesToLoad = append(filesToLoad, composePath)
+
+		overridePathYml := filepath.Join(configDir, "docker-compose.override.yml")
+		overridePathYaml := filepath.Join(configDir, "docker-compose.override.yaml")
+		if _, err := os.Stat(overridePathYml); err == nil {
+			filesToLoad = append(filesToLoad, overridePathYml)
+		} else if _, err := os.Stat(overridePathYaml); err == nil {
+			filesToLoad = append(filesToLoad, overridePathYaml)
+		}
+	}
+	for _, f := range filesToLoad {
+		if _, err := os.Stat(f); err == nil {
+			files = append(files, f)
+		}
+	}
+
+	examplePath := filepath.Join(configDir, ".env.example")
+	if _, err := os.Stat(examplePath); err == nil {
+		files = append(files, examplePath)
+	}
+	return files
+}
+
+func runWatch() {
+	files := getWatchFiles()
+
+	// Initial run
+	_ = executeCheck()
+
+	lastMods := make(map[string]time.Time)
+	for _, f := range files {
+		if stat, err := os.Stat(f); err == nil {
+			lastMods[f] = stat.ModTime()
+		} else {
+			lastMods[f] = time.Time{}
+		}
+	}
+
+	fmt.Println("\nWatching for configuration changes... (Press Ctrl+C to stop)")
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		changed := false
+		files = getWatchFiles()
+		for _, f := range files {
+			stat, err := os.Stat(f)
+			var modTime time.Time
+			if err == nil {
+				modTime = stat.ModTime()
+			}
+			if !modTime.Equal(lastMods[f]) {
+				lastMods[f] = modTime
+				changed = true
+			}
+		}
+
+		if changed {
+			fmt.Print("\033[H\033[2J")
+			fmt.Println("Change detected! Re-running diagnostics...")
+			_ = executeCheck()
+			fmt.Println("\nWatching for configuration changes... (Press Ctrl+C to stop)")
+		}
+	}
 }
