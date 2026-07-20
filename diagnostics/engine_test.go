@@ -2237,3 +2237,43 @@ services:
 		t.Error("test check not found in report")
 	}
 }
+
+func TestEngineDockerOffline(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web:
+    image: nginx
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	// Create engine with a nil docker client to simulate Docker offline status
+	engine := NewEngine(tempDir, composePath, map[string]string{}, comp, nil)
+	report := engine.Run(context.Background())
+
+	// The engine overall status should be healthy because Docker being offline is downgraded to warning
+	if report.Status != output.StatusHealthy {
+		t.Errorf("expected report status to be healthy when Docker daemon is offline, got: %s", report.Status)
+	}
+
+	foundWarning := false
+	for _, check := range report.Checks {
+		if check.Group == "Network & Port Availability" && check.Name == "Docker Daemon Status" && check.Status == output.CheckWarning {
+			foundWarning = true
+			if !strings.Contains(check.Error, "unreachable or not running") {
+				t.Errorf("unexpected error message: %q", check.Error)
+			}
+		}
+	}
+	if !foundWarning {
+		t.Errorf("expected to find Docker Daemon Status check warning in report: %+v", report.Checks)
+	}
+}

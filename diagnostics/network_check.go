@@ -248,10 +248,10 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	if e.DockerCli == nil {
 		results = append(results, output.CheckResult{
 			Group:      "Network & Port Availability",
-			Name:       "Service Reachability",
-			Status:     output.CheckFailed,
-			Error:      "Docker client is not initialized",
-			Mitigation: "Ensure Docker daemon is running and socket is accessible.",
+			Name:       "Docker Daemon Status",
+			Status:     output.CheckWarning,
+			Error:      "Docker daemon is unreachable or not running",
+			Mitigation: "Start the Docker daemon/service (Docker Desktop, systemctl start docker, etc.) to enable container reachability checks.",
 		})
 		return results
 	}
@@ -259,10 +259,10 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	if listErr != nil {
 		results = append(results, output.CheckResult{
 			Group:      "Network & Port Availability",
-			Name:       "Service Reachability",
-			Status:     output.CheckFailed,
-			Error:      fmt.Sprintf("Failed to list docker containers: %v", listErr),
-			Mitigation: "Check docker service status and permissions.",
+			Name:       "Docker Daemon Status",
+			Status:     output.CheckWarning,
+			Error:      fmt.Sprintf("Failed to list docker containers (Docker daemon may be unreachable): %v", listErr),
+			Mitigation: "Ensure Docker daemon/service is running and socket is accessible.",
 		})
 		return results
 	}

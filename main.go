@@ -248,19 +248,19 @@ func executeCheck() int {
 	// Merge all parsed configs according to docker-compose overrides rules
 	mergedComp := config.MergeComposeConfigs(parsedConfigs...)
 
-	dockerCli, err := client.New(client.FromEnv)
-	if err != nil {
-		renderSystemFailure(format, verbose, fmt.Sprintf("Failed to create Docker client: %v", err), "Verify your Docker environment variables are set correctly.")
-		return 1
+	var dockerCli client.APIClient
+	var dockerErr error
+	dockerCli, dockerErr = client.New(client.FromEnv)
+	if dockerErr == nil {
+		pingCtx, pingCancel := context.WithTimeout(ctx, 2*time.Second)
+		_, dockerErr = dockerCli.Ping(pingCtx, client.PingOptions{})
+		pingCancel()
 	}
-	defer func() { _ = dockerCli.Close() }()
 
-	pingCtx, pingCancel := context.WithTimeout(ctx, 2*time.Second)
-	defer pingCancel()
-	_, err = dockerCli.Ping(pingCtx, client.PingOptions{})
-	if err != nil {
-		renderSystemFailure(format, verbose, fmt.Sprintf("Docker daemon is unreachable: %v", err), "Ensure Docker daemon/service is running and socket is accessible.")
-		return 1
+	if dockerErr != nil {
+		dockerCli = nil
+	} else {
+		defer func() { _ = dockerCli.Close() }()
 	}
 
 	engineConfigDir := filepath.Dir(filesToLoad[0])
