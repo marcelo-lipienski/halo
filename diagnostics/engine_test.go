@@ -1829,6 +1829,111 @@ services:
 	}
 }
 
+func TestEngineServiceEnvFile(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  app:
+    image: nginx
+    env_file:
+      - .env.service
+      - file: .env.optional
+        required: false
+    environment:
+      - DB_USER # pass-through
+      - DB_PASS # pass-through
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{}, nil
+		},
+	}
+
+	// 1. Missing required env_file (.env.service)
+	// Should fail Volume check and also Environmental check because DB_USER/PASS cannot be loaded.
+	engine := NewEngine(tempDir, composePath, map[string]string{}, comp, mockDocker)
+	report := engine.Run(context.Background())
+	if report.Status != output.StatusEnvironmentBroken {
+		t.Errorf("expected status broken, got %s", report.Status)
+	}
+
+	hasEnvFileMissing := false
+	for _, check := range report.Checks {
+		if check.Group == "Volume & File Permissions" && check.Status == output.CheckFailed && strings.Contains(check.Name, ".env.service") {
+			hasEnvFileMissing = true
+		}
+	}
+	if !hasEnvFileMissing {
+		t.Errorf("expected to find missing env_file failure in checks: %+v", report.Checks)
+	}
+
+	// 2. Create the env_file with correct variables
+	serviceEnvPath := filepath.Join(tempDir, ".env.service")
+	serviceEnvContent := `
+DB_USER=postgres
+DB_PASS=secret
+`
+	if err := os.WriteFile(serviceEnvPath, []byte(serviceEnvContent), 0644); err != nil {
+		t.Fatalf("failed to write temp env file: %v", err)
+	}
+
+	engine = NewEngine(tempDir, composePath, map[string]string{}, comp, mockDocker)
+	report = engine.Run(context.Background())
+	// Should pass environmental alignment checks, but warning on missing .env.optional (since it is optional)
+	hasEnvFileOptionalWarning := false
+	for _, check := range report.Checks {
+		if check.Group == "Volume & File Permissions" && check.Status == output.CheckWarning && strings.Contains(check.Name, ".env.optional") {
+			hasEnvFileOptionalWarning = true
+		}
+	}
+	if !hasEnvFileOptionalWarning {
+		t.Errorf("expected warning for missing optional env_file in checks: %+v", report.Checks)
+	}
+
+	// Env check itself should pass (DB_USER/DB_PASS are parsed from .env.service)
+	hasEnvVarFailure := false
+	for _, check := range report.Checks {
+		if check.Group == "Environmental Alignment" && check.Status == output.CheckFailed {
+			hasEnvVarFailure = true
+		}
+	}
+	if hasEnvVarFailure {
+		t.Errorf("expected environmental check to pass, but it failed: %+v", report.Checks)
+	}
+
+	// 3. DryRun and AutoFix on missing required env_file
+	// Remove .env.service first
+	_ = os.Remove(serviceEnvPath)
+
+	engine = NewEngine(tempDir, composePath, map[string]string{}, comp, mockDocker)
+	engine.AutoFix = true
+	report = engine.Run(context.Background())
+	// The file should be auto-created
+	if _, err := os.Stat(serviceEnvPath); err != nil {
+		t.Error("expected .env.service to be auto-created by AutoFix")
+	}
+
+	hasEnvFileAutoFixed := false
+	for _, check := range report.Checks {
+		if check.Group == "Volume & File Permissions" && check.Status == output.CheckPassed && strings.Contains(check.Name, "Env file auto-created") {
+			hasEnvFileAutoFixed = true
+		}
+	}
+	if !hasEnvFileAutoFixed {
+		t.Errorf("expected to find auto-created check result: %+v", report.Checks)
+	}
+}
+
 
 
 

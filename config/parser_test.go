@@ -559,3 +559,94 @@ DB_PASS=secret
 	}
 }
 
+func TestParseEnvFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web1:
+    env_file: .env.one
+  web2:
+    env_file:
+      - .env.common
+      - .env.dev
+  web3:
+    env_file:
+      - file: .env.prod
+        required: true
+      - file: .env.opt
+        required: false
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose: %v", err)
+	}
+
+	cfg, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("unexpected error parsing compose: %v", err)
+	}
+
+	// verify web1
+	w1, ok := cfg.Services["web1"]
+	if !ok {
+		t.Fatal("web1 not found")
+	}
+	if len(w1.EnvFiles) != 1 || w1.EnvFiles[0].File != ".env.one" || !w1.EnvFiles[0].Required {
+		t.Errorf("unexpected web1 env_file: %+v", w1.EnvFiles)
+	}
+
+	// verify web2
+	w2, ok := cfg.Services["web2"]
+	if !ok {
+		t.Fatal("web2 not found")
+	}
+	if len(w2.EnvFiles) != 2 || w2.EnvFiles[0].File != ".env.common" || w2.EnvFiles[1].File != ".env.dev" {
+		t.Errorf("unexpected web2 env_file: %+v", w2.EnvFiles)
+	}
+
+	// verify web3
+	w3, ok := cfg.Services["web3"]
+	if !ok {
+		t.Fatal("web3 not found")
+	}
+	if len(w3.EnvFiles) != 2 {
+		t.Fatalf("expected 2 env_files, got %d", len(w3.EnvFiles))
+	}
+	if w3.EnvFiles[0].File != ".env.prod" || !w3.EnvFiles[0].Required {
+		t.Errorf("unexpected web3 env_file 0: %+v", w3.EnvFiles[0])
+	}
+	if w3.EnvFiles[1].File != ".env.opt" || w3.EnvFiles[1].Required {
+		t.Errorf("unexpected web3 env_file 1: %+v", w3.EnvFiles[1])
+	}
+}
+
+func TestMergeComposeConfigsWithEnvFiles(t *testing.T) {
+	cfg1 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				EnvFiles: ComposeEnvFiles{
+					{File: ".env.common", Required: true},
+				},
+			},
+		},
+	}
+	cfg2 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				EnvFiles: ComposeEnvFiles{
+					{File: ".env.override", Required: false},
+				},
+			},
+		},
+	}
+
+	merged := MergeComposeConfigs(cfg1, cfg2)
+	web := merged.Services["web"]
+	if len(web.EnvFiles) != 2 {
+		t.Fatalf("expected 2 env_files after merge, got %d", len(web.EnvFiles))
+	}
+	if web.EnvFiles[0].File != ".env.common" || web.EnvFiles[1].File != ".env.override" {
+		t.Errorf("unexpected merged env_files: %+v", web.EnvFiles)
+	}
+}
+

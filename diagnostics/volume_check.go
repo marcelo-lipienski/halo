@@ -650,6 +650,137 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 		}
 	}
 
+	// 4. EnvFiles Check
+	for _, svcName := range svcNames {
+		svc := e.Compose.Services[svcName]
+		for _, ef := range svc.EnvFiles {
+			select {
+			case <-ctx.Done():
+				results = append(results, output.CheckResult{
+					Group:      "Volume & File Permissions",
+					Name:       "Check Timeout",
+					Status:     output.CheckFailed,
+					Error:      "Env file check timed out",
+					Mitigation: "Verify host performance and disk storage health.",
+				})
+				return results
+			default:
+			}
+
+			resolvedFile := e.resolveEnvVars(ef.File)
+			if resolvedFile == "" {
+				continue
+			}
+
+			envFilePath := resolvedFile
+			if !filepath.IsAbs(envFilePath) {
+				baseDir := ef.BaseDir
+				if baseDir == "" {
+					baseDir = e.ConfigDir
+				}
+				envFilePath = filepath.Join(baseDir, envFilePath)
+			}
+			envFilePath = filepath.Clean(envFilePath)
+
+			_, err := os.Stat(envFilePath)
+			if os.IsNotExist(err) {
+				if !ef.Required {
+					// Optional env file is missing — warn, not fatal
+					results = append(results, output.CheckResult{
+						Group:      "Volume & File Permissions",
+						Name:       fmt.Sprintf("Optional env file missing: %s", ef.File),
+						Status:     output.CheckWarning,
+						Error:      fmt.Sprintf("Optional env_file '%s' for service %s does not exist.", envFilePath, svcName),
+						Mitigation: fmt.Sprintf("Create the file if needed: touch %s", envFilePath),
+					})
+					continue
+				}
+
+				if e.DryRun {
+					volumeCheckPassed = false
+					results = append(results, output.CheckResult{
+						Group:      "Volume & File Permissions",
+						Name:       fmt.Sprintf("Env file missing: %s", ef.File),
+						Status:     output.CheckFailed,
+						Error:      fmt.Sprintf("[Dry-Run] Would create missing env file '%s' (permissions: 0644)", envFilePath),
+						Mitigation: fmt.Sprintf("Run: touch %s", envFilePath),
+					})
+					continue
+				}
+
+				if e.AutoFix {
+					dir := filepath.Dir(envFilePath)
+					_ = os.MkdirAll(dir, 0755)
+					if writeErr := os.WriteFile(envFilePath, []byte{}, 0644); writeErr == nil {
+						results = append(results, output.CheckResult{
+							Group:  "Volume & File Permissions",
+							Name:   fmt.Sprintf("Env file auto-created: %s", ef.File),
+							Status: output.CheckPassed,
+						})
+						continue
+					}
+				}
+
+				volumeCheckPassed = false
+				results = append(results, output.CheckResult{
+					Group:      "Volume & File Permissions",
+					Name:       fmt.Sprintf("Env file missing: %s", ef.File),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("File '%s' for env_file in service %s does not exist.", envFilePath, svcName),
+					Mitigation: fmt.Sprintf("Create the env file: touch %s", envFilePath),
+				})
+				continue
+			} else if err != nil {
+				volumeCheckPassed = false
+				results = append(results, output.CheckResult{
+					Group:      "Volume & File Permissions",
+					Name:       fmt.Sprintf("Env file access error: %s", ef.File),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("Failed to inspect env_file path '%s': %v", envFilePath, err),
+					Mitigation: fmt.Sprintf("Verify permissions for path: %s", envFilePath),
+				})
+				continue
+			}
+
+			// Verify read permission
+			f, err := os.Open(envFilePath)
+			if err != nil {
+				if e.DryRun {
+					volumeCheckPassed = false
+					results = append(results, output.CheckResult{
+						Group:      "Volume & File Permissions",
+						Name:       fmt.Sprintf("Env file read lockout: %s", ef.File),
+						Status:     output.CheckFailed,
+						Error:      fmt.Sprintf("[Dry-Run] Would apply chmod 0644 to env file '%s'", envFilePath),
+						Mitigation: fmt.Sprintf("Run: chmod u+r %s or sudo chown $USER %s", envFilePath, envFilePath),
+					})
+					continue
+				}
+				if e.AutoFix {
+					if chmodErr := os.Chmod(envFilePath, 0644); chmodErr == nil {
+						results = append(results, output.CheckResult{
+							Group:  "Volume & File Permissions",
+							Name:   fmt.Sprintf("Env file permissions auto-fixed: %s", ef.File),
+							Status: output.CheckPassed,
+						})
+						continue
+					}
+				}
+
+				volumeCheckPassed = false
+				results = append(results, output.CheckResult{
+					Group:      "Volume & File Permissions",
+					Name:       fmt.Sprintf("Env file read lockout: %s", ef.File),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("Env file '%s' is not readable by current host user. System error: %v", envFilePath, err),
+					Mitigation: fmt.Sprintf("Run: chmod u+r %s or sudo chown $USER %s", envFilePath, envFilePath),
+				})
+			} else {
+				_ = f.Close()
+			}
+		}
+	}
+
 	if volumeCheckPassed {
 		results = append(results, output.CheckResult{
 			Group:  "Volume & File Permissions",

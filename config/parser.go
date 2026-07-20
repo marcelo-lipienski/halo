@@ -108,11 +108,59 @@ func (cp *ComposePorts) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// ComposeEnvFile represents an environment file mapping in compose
+type ComposeEnvFile struct {
+	File     string
+	Required bool
+	BaseDir  string
+}
+
+// ComposeEnvFiles represents a custom type for unmarshaling env_file
+type ComposeEnvFiles []ComposeEnvFile
+
+// UnmarshalYAML implements custom decoding for ComposeEnvFiles
+func (cef *ComposeEnvFiles) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		var s string
+		if err := value.Decode(&s); err != nil {
+			return err
+		}
+		*cef = []ComposeEnvFile{{File: s, Required: true}}
+	case yaml.SequenceNode:
+		for _, node := range value.Content {
+			switch node.Kind {
+			case yaml.ScalarNode:
+				var s string
+				if err := node.Decode(&s); err != nil {
+					return err
+				}
+				*cef = append(*cef, ComposeEnvFile{File: s, Required: true})
+			case yaml.MappingNode:
+				var m struct {
+					File     string `yaml:"file"`
+					Required *bool  `yaml:"required"`
+				}
+				if err := node.Decode(&m); err != nil {
+					return err
+				}
+				req := true
+				if m.Required != nil {
+					req = *m.Required
+				}
+				*cef = append(*cef, ComposeEnvFile{File: m.File, Required: req})
+			}
+		}
+	}
+	return nil
+}
+
 // ComposeService represents a service inside docker-compose.yml
 type ComposeService struct {
 	Environment   ComposeEnvironment `yaml:"environment"`
 	Ports         ComposePorts       `yaml:"ports"`
 	Volumes       []ComposeVolume    `yaml:"volumes"`
+	EnvFiles      ComposeEnvFiles    `yaml:"env_file"`
 	Image         string             `yaml:"image"`
 	ContainerName string             `yaml:"container_name"`
 	Entrypoint    StringOrSlice      `yaml:"entrypoint"`
@@ -279,6 +327,9 @@ func ParseCompose(path string) (*ComposeConfig, error) {
 		for i := range svc.Volumes {
 			svc.Volumes[i].BaseDir = baseDir
 		}
+		for i := range svc.EnvFiles {
+			svc.EnvFiles[i].BaseDir = baseDir
+		}
 		config.Services[svcName] = svc
 	}
 
@@ -353,6 +404,9 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 
 			// Ports: append lists
 			destSvc.Ports = append(destSvc.Ports, srcSvc.Ports...)
+
+			// EnvFiles: append list
+			destSvc.EnvFiles = append(destSvc.EnvFiles, srcSvc.EnvFiles...)
 
 			// Volumes: latter overrides former if container target path is the same.
 			// Anonymous volumes (empty Target) are always appended without de-duplication.
