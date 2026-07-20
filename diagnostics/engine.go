@@ -19,6 +19,7 @@ type Engine struct {
 	DockerCli   client.ContainerAPIClient
 	AutoFix     bool
 	DryRun      bool
+	Interactive bool
 }
 
 // NewEngine instantiates a new Diagnostics Engine

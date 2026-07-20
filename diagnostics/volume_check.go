@@ -10,9 +10,31 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/marcelo-lipienski/halo/output"
 )
+
+var promptMutex sync.Mutex
+
+var promptConfirm = func(question string) bool {
+	promptMutex.Lock()
+	defer promptMutex.Unlock()
+
+	fileInfo, err := os.Stdin.Stat()
+	if err != nil || (fileInfo.Mode()&os.ModeCharDevice) == 0 {
+		return false
+	}
+
+	fmt.Printf("%s [y/N]: ", question)
+	var response string
+	_, err = fmt.Scanln(&response)
+	if err != nil {
+		return false
+	}
+	response = strings.ToLower(strings.TrimSpace(response))
+	return response == "y" || response == "yes"
+}
 
 func isLikelyFilePath(path string) bool {
 	base := filepath.Base(path)
@@ -104,7 +126,17 @@ func (e *Engine) checkReadPermission(results []output.CheckResult, hostPath, vol
 		return results, false
 	}
 
-	if e.AutoFix {
+	shouldFix := e.AutoFix || e.Interactive
+	confirmed := true
+	if e.Interactive {
+		newMode := os.FileMode(0755)
+		if !info.IsDir() {
+			newMode = 0644
+		}
+		confirmed = promptConfirm(fmt.Sprintf("%s '%s' is not readable. Apply permissions (chmod %s, original: %s)?", pathType, hostPath, newMode, info.Mode()))
+	}
+
+	if shouldFix && confirmed {
 		originalMode := info.Mode()
 		newMode := os.FileMode(0755)
 		if !info.IsDir() {
@@ -171,7 +203,17 @@ func (e *Engine) checkWritePermission(results []output.CheckResult, hostPath, vo
 		return results
 	}
 
-	if e.AutoFix {
+	shouldFix := e.AutoFix || e.Interactive
+	confirmed := true
+	if e.Interactive {
+		mode := os.FileMode(0755)
+		if !info.IsDir() {
+			mode = 0644
+		}
+		confirmed = promptConfirm(fmt.Sprintf("%s '%s' is not writable. Apply permissions (chmod %s, original: %s)?", pathType, hostPath, mode, info.Mode()))
+	}
+
+	if shouldFix && confirmed {
 		mode := os.FileMode(0755)
 		if !info.IsDir() {
 			mode = 0644
@@ -318,7 +360,17 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 					})
 					continue
 				}
-				if e.AutoFix {
+				shouldFix := e.AutoFix || e.Interactive
+				confirmed := true
+				if e.Interactive {
+					pathTypeStr := "directory"
+					if isLikelyFilePath(hostPath) {
+						pathTypeStr = "file"
+					}
+					confirmed = promptConfirm(fmt.Sprintf("Volume source %s '%s' is missing. Create it?", pathTypeStr, hostPath))
+				}
+
+				if shouldFix && confirmed {
 					isLikelyFile := isLikelyFilePath(hostPath)
 					var fixErr error
 					if isLikelyFile {
@@ -449,7 +501,13 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				})
 				continue
 			}
-			if e.AutoFix {
+			shouldFix := e.AutoFix || e.Interactive
+			confirmed := true
+			if e.Interactive {
+				confirmed = promptConfirm(fmt.Sprintf("Secret file for secret '%s' is missing. Create it at '%s'?", secName, secretPath))
+			}
+
+			if shouldFix && confirmed {
 				dir := filepath.Dir(secretPath)
 				_ = os.MkdirAll(dir, 0755)
 				if writeErr := os.WriteFile(secretPath, []byte{}, 0600); writeErr == nil {
@@ -497,7 +555,13 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				})
 				continue
 			}
-			if e.AutoFix {
+			shouldFix := e.AutoFix || e.Interactive
+			confirmed := true
+			if e.Interactive {
+				confirmed = promptConfirm(fmt.Sprintf("Secret file for secret '%s' is not readable. Apply permissions (chmod 0600)?", secName))
+			}
+
+			if shouldFix && confirmed {
 				if chmodErr := os.Chmod(secretPath, 0600); chmodErr == nil {
 					results = append(results, output.CheckResult{
 						Group:  "Volume & File Permissions",
@@ -578,7 +642,13 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				})
 				continue
 			}
-			if e.AutoFix {
+			shouldFix := e.AutoFix || e.Interactive
+			confirmed := true
+			if e.Interactive {
+				confirmed = promptConfirm(fmt.Sprintf("Config file for config '%s' is missing. Create it at '%s'?", cfgName, cfgPath))
+			}
+
+			if shouldFix && confirmed {
 				dir := filepath.Dir(cfgPath)
 				_ = os.MkdirAll(dir, 0755)
 				if writeErr := os.WriteFile(cfgPath, []byte{}, 0644); writeErr == nil {
@@ -626,7 +696,13 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				})
 				continue
 			}
-			if e.AutoFix {
+			shouldFix := e.AutoFix || e.Interactive
+			confirmed := true
+			if e.Interactive {
+				confirmed = promptConfirm(fmt.Sprintf("Config file for config '%s' is not readable. Apply permissions (chmod 0644)?", cfgName))
+			}
+
+			if shouldFix && confirmed {
 				if chmodErr := os.Chmod(cfgPath, 0644); chmodErr == nil {
 					results = append(results, output.CheckResult{
 						Group:  "Volume & File Permissions",
@@ -708,7 +784,13 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 					continue
 				}
 
-				if e.AutoFix {
+				shouldFix := e.AutoFix || e.Interactive
+				confirmed := true
+				if e.Interactive {
+					confirmed = promptConfirm(fmt.Sprintf("Env file '%s' for service %s is missing. Create it at '%s'?", ef.File, svcName, envFilePath))
+				}
+
+				if shouldFix && confirmed {
 					dir := filepath.Dir(envFilePath)
 					_ = os.MkdirAll(dir, 0755)
 					if writeErr := os.WriteFile(envFilePath, []byte{}, 0644); writeErr == nil {
@@ -756,7 +838,13 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 					})
 					continue
 				}
-				if e.AutoFix {
+				shouldFix := e.AutoFix || e.Interactive
+				confirmed := true
+				if e.Interactive {
+					confirmed = promptConfirm(fmt.Sprintf("Env file '%s' for service %s is not readable. Apply permissions (chmod 0644)?", ef.File, svcName))
+				}
+
+				if shouldFix && confirmed {
 					if chmodErr := os.Chmod(envFilePath, 0644); chmodErr == nil {
 						results = append(results, output.CheckResult{
 							Group:  "Volume & File Permissions",

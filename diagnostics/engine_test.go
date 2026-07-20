@@ -2020,6 +2020,87 @@ PLACEHOLDER_VAR=
 	}
 }
 
+func TestEngineInteractiveMitigation(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  app:
+    image: nginx
+    volumes:
+      - ./data:/data
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{}, nil
+		},
+	}
+
+	missingPath := filepath.Join(tempDir, "data")
+
+	// Save original promptConfirm func and restore after test
+	origPromptConfirm := promptConfirm
+	defer func() { promptConfirm = origPromptConfirm }()
+
+	// Case 1: Interactive mode, user says YES (true) -> should fix and create directory
+	promptConfirm = func(question string) bool {
+		return true
+	}
+
+	engine := NewEngine(tempDir, composePath, map[string]string{}, comp, mockDocker)
+	engine.Interactive = true
+	report := engine.Run(context.Background())
+
+	if _, err := os.Stat(missingPath); err != nil {
+		t.Error("expected missing directory to be created when user confirmed prompt")
+	}
+
+	hasAutoFixedResult := false
+	for _, check := range report.Checks {
+		if check.Group == "Volume & File Permissions" && check.Status == output.CheckPassed && strings.Contains(check.Name, "Volume source auto-fixed") {
+			hasAutoFixedResult = true
+		}
+	}
+	if !hasAutoFixedResult {
+		t.Errorf("expected to find auto-fixed check result: %+v", report.Checks)
+	}
+
+	// Clean up created path
+	_ = os.RemoveAll(missingPath)
+
+	// Case 2: Interactive mode, user says NO (false) -> should NOT create directory
+	promptConfirm = func(question string) bool {
+		return false
+	}
+
+	engine = NewEngine(tempDir, composePath, map[string]string{}, comp, mockDocker)
+	engine.Interactive = true
+	report = engine.Run(context.Background())
+
+	if _, err := os.Stat(missingPath); err == nil {
+		t.Error("expected missing directory NOT to be created when user rejected prompt")
+	}
+
+	hasFailedResult := false
+	for _, check := range report.Checks {
+		if check.Group == "Volume & File Permissions" && check.Status == output.CheckFailed && strings.Contains(check.Name, "Volume source missing") {
+			hasFailedResult = true
+		}
+	}
+	if !hasFailedResult {
+		t.Errorf("expected to find failed check result when user rejected prompt: %+v", report.Checks)
+	}
+}
+
 
 
 
