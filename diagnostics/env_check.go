@@ -291,5 +291,87 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 		})
 	}
 
+	envPath := e.EnvPath
+	if envPath == "" {
+		envPath = filepath.Join(e.ConfigDir, ".env")
+	}
+	examplePath2 := filepath.Join(filepath.Dir(envPath), ".env.example")
+	driftResults, _ := CheckEnvExampleDrift(envPath, examplePath2)
+	results = append(results, driftResults...)
+
 	return results
+}
+
+// CheckEnvExampleDrift compares .env against .env.example
+func CheckEnvExampleDrift(envPath, examplePath string) ([]output.CheckResult, error) {
+	var results []output.CheckResult
+
+	if _, err := os.Stat(examplePath); os.IsNotExist(err) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	exampleMap, err := config.ParseEnv(examplePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse example file: %w", err)
+	}
+
+	envMap := make(map[string]string)
+	if _, err := os.Stat(envPath); err == nil {
+		parsedMap, err := config.ParseEnv(envPath)
+		if err == nil {
+			envMap = parsedMap
+		}
+	}
+
+	var missingKeys []string
+	for k := range exampleMap {
+		if _, exists := envMap[k]; !exists {
+			missingKeys = append(missingKeys, k)
+		}
+	}
+	sort.Strings(missingKeys)
+
+	var undeclaredKeys []string
+	for k := range envMap {
+		if _, exists := exampleMap[k]; !exists {
+			undeclaredKeys = append(undeclaredKeys, k)
+		}
+	}
+	sort.Strings(undeclaredKeys)
+
+	if len(missingKeys) > 0 {
+		results = append(results, output.CheckResult{
+			Group:      "Environmental Alignment",
+			Name:       ".env.example Drift",
+			Status:     output.CheckFailed,
+			Error:      fmt.Sprintf("%d keys in .env.example are missing from .env: %s", len(missingKeys), strings.Join(missingKeys, ", ")),
+			Mitigation: "Run 'halo init' to automatically merge missing keys from .env.example",
+		})
+	} else {
+		results = append(results, output.CheckResult{
+			Group:  "Environmental Alignment",
+			Name:   ".env.example Drift",
+			Status: output.CheckPassed,
+		})
+	}
+
+	if len(undeclaredKeys) > 0 {
+		results = append(results, output.CheckResult{
+			Group:      "Environmental Alignment",
+			Name:       "Undeclared Keys",
+			Status:     output.CheckWarning,
+			Error:      fmt.Sprintf("%d keys in .env are not declared in .env.example: %s", len(undeclaredKeys), strings.Join(undeclaredKeys, ", ")),
+			Mitigation: "Add these keys to .env.example or remove them from .env",
+		})
+	} else {
+		results = append(results, output.CheckResult{
+			Group:  "Environmental Alignment",
+			Name:   "Undeclared Keys",
+			Status: output.CheckPassed,
+		})
+	}
+
+	return results, nil
 }

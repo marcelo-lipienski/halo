@@ -17,6 +17,7 @@ import (
 type Engine struct {
 	ConfigDir   string
 	ComposePath string
+	EnvPath     string
 	Env         map[string]string
 	Compose     *config.ComposeConfig
 	DockerCli   client.ContainerAPIClient

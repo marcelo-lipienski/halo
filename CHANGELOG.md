@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-07-20
+
+### Added
+- `.env.example` drift detection: new Environmental Alignment check that compares `.env` against `.env.example`. Reports missing keys as failures (with a hint to run `halo init`) and undeclared keys as warnings. Skipped automatically when `.env.example` does not exist.
+
 ## [1.1.0] — 2026-07-20
 
 ### Added
@@ -102,7 +107,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Mitigation strings use `docker compose` (modern CLI) instead of the deprecated `docker-compose`.
 - `exitWithSystemFailure` now respects the `--verbose` flag consistently.
 
-[Unreleased]: https://github.com/marcelo-lipienski/halo/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/marcelo-lipienski/halo/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/marcelo-lipienski/halo/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/marcelo-lipienski/halo/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/marcelo-lipienski/halo/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/marcelo-lipienski/halo/compare/v0.2.4...v0.3.0

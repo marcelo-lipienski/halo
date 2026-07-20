@@ -450,3 +450,26 @@ func TestCLIInit(t *testing.T) {
 		t.Errorf("expected output to contain 'up to date', got %q", stdout)
 	}
 }
+
+func TestCLIEnvDrift(t *testing.T) {
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	examplePath := filepath.Join(tmpDir, ".env.example")
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+
+	os.WriteFile(composePath, []byte("services:\n  web:\n    image: nginx\n"), 0644)
+	os.WriteFile(examplePath, []byte("DB_URL=<required>\n"), 0644)
+	os.WriteFile(envPath, []byte("EXTRA=1\n"), 0644)
+
+	stdout, _, _ := runInProcess([]string{"check", "--config-dir", tmpDir})
+
+	if !strings.Contains(stdout, ".env.example Drift") {
+		t.Errorf("expected drift check in output, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "missing from .env") {
+		t.Errorf("expected missing keys error in output")
+	}
+	if !strings.Contains(stdout, "Undeclared Keys") {
+		t.Errorf("expected undeclared keys in output")
+	}
+}

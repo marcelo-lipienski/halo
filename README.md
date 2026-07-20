@@ -9,7 +9,7 @@ Instead of wasting engineering hours debugging mismatched environment configurat
 ## Key Features
 
 * **Zero Guesswork Diagnostics:** Validates local system state against declared Docker topologies.
-* **Environment Drift Detection:** Cross-references `.env` variables directly with active compose declarations to flag missing keys, validating `.env.example` alignment and service-level mounts.
+* **Environment Drift Detection:** Cross-references `.env` variables directly with active compose declarations to flag missing keys. Compares `.env` against `.env.example` to detect missing or undeclared keys, validating alignment and service-level mounts.
 * **Permission & Volume Auditing:** Inspects host-mounted paths, service secrets, and config declarations to catch permission issues, featuring native Unix `chmod` and Windows `icacls` auto-fixes.
 * **Conflicting Process Identification:** Resolves and displays the exact PIDs and process names of host applications causing port collisions.
 * **Sensitive Data Redaction:** Automatically filters and redacts sensitive environment variables containing keys like `SECRET`, `PASSWORD`, or `TOKEN` from the rendered output.

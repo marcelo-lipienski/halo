@@ -319,6 +319,7 @@ func executeCheck() int {
 
 	engineConfigDir := filepath.Dir(filesToLoad[0])
 	engine := diagnostics.NewEngine(engineConfigDir, filesToLoad[0], env, mergedComp, dockerCli)
+	engine.EnvPath = envPath
 	engine.AutoFix = fix
 	engine.DryRun = dryRun
 	engine.Interactive = interactive
