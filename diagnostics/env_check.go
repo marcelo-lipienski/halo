@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/marcelo-lipienski/halo/config"
 	"github.com/marcelo-lipienski/halo/output"
@@ -184,6 +185,90 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 		}
 	}
 
+	// .env.example Schema Validation Check
+	schemaCheckPassed := true
+	hasSchemaFile := false
+
+	examplePath := filepath.Join(e.ConfigDir, ".env.example")
+	if _, err := os.Stat(examplePath); err != nil {
+		// Fallback to directory of compose path
+		examplePath = filepath.Join(filepath.Dir(e.ComposePath), ".env.example")
+	}
+
+	if _, err := os.Stat(examplePath); err == nil {
+		hasSchemaFile = true
+		if exampleEnv, parseErr := config.ParseEnv(examplePath); parseErr == nil {
+			// Sort keys for deterministic output
+			var keys []string
+			for k := range exampleEnv {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+
+			isPlaceholder := func(v string) bool {
+				vl := strings.ToLower(v)
+				return strings.Contains(vl, "change-me") ||
+					strings.Contains(vl, "changeme") ||
+					strings.Contains(vl, "todo") ||
+					strings.Contains(vl, "insert") ||
+					strings.Contains(vl, "placeholder") ||
+					strings.Contains(vl, "your-") ||
+					strings.Contains(vl, "your_") ||
+					strings.Contains(vl, "replace-me") ||
+					strings.Contains(vl, "replaceme")
+			}
+
+			for _, key := range keys {
+				select {
+				case <-ctx.Done():
+					return results
+				default:
+				}
+
+				// Check if key is defined
+				var val string
+				var exists bool
+				if v, ok := os.LookupEnv(key); ok {
+					val = v
+					exists = true
+				} else if v, ok := e.Env[key]; ok {
+					val = v
+					exists = true
+				} else {
+					// Check in any service env_file
+					for _, svc := range e.Compose.Services {
+						svcEnv := e.loadServiceEnvFiles(svc)
+						if v, ok := svcEnv[key]; ok {
+							val = v
+							exists = true
+							break
+						}
+					}
+				}
+
+				if !exists {
+					variablesCheckPassed = false
+					schemaCheckPassed = false
+					results = append(results, output.CheckResult{
+						Group:      "Environmental Alignment",
+						Name:       fmt.Sprintf("Variable %s missing from .env", key),
+						Status:     output.CheckFailed,
+						Error:      fmt.Sprintf("Environment variable %s is defined in .env.example but missing from .env or host environment", key),
+						Mitigation: fmt.Sprintf("Add %s=your_value to your .env file", key),
+					})
+				} else if isPlaceholder(val) {
+					results = append(results, output.CheckResult{
+						Group:      "Environmental Alignment",
+						Name:       fmt.Sprintf("Variable %s has placeholder value", key),
+						Status:     output.CheckWarning,
+						Error:      fmt.Sprintf("Environment variable %s has placeholder value '%s'", key, val),
+						Mitigation: fmt.Sprintf("Set a non-placeholder value for %s in your .env file", key),
+					})
+				}
+			}
+		}
+	}
+
 	if variablesCheckPassed {
 		results = append(results, output.CheckResult{
 			Group:  "Environmental Alignment",
@@ -195,6 +280,13 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 		results = append(results, output.CheckResult{
 			Group:  "Environmental Alignment",
 			Name:   "Mismatched Types Check",
+			Status: output.CheckPassed,
+		})
+	}
+	if hasSchemaFile && schemaCheckPassed {
+		results = append(results, output.CheckResult{
+			Group:  "Environmental Alignment",
+			Name:   "Schema Alignment Check",
 			Status: output.CheckPassed,
 		})
 	}

@@ -1934,6 +1934,92 @@ DB_PASS=secret
 	}
 }
 
+func TestEngineEnvSchemaValidation(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  app:
+    image: nginx
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	mockDocker := &mockDockerClient{
+		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+			return client.ContainerListResult{}, nil
+		},
+	}
+
+	// 1. Create .env.example with two keys: REQ_VAR and PLACEHOLDER_VAR
+	exampleEnvPath := filepath.Join(tempDir, ".env.example")
+	exampleContent := `
+REQ_VAR=
+PLACEHOLDER_VAR=
+`
+	if err := os.WriteFile(exampleEnvPath, []byte(exampleContent), 0644); err != nil {
+		t.Fatalf("failed to write .env.example: %v", err)
+	}
+
+	// Active environment map is empty
+	engine := NewEngine(tempDir, composePath, map[string]string{}, comp, mockDocker)
+	report := engine.Run(context.Background())
+	if report.Status != output.StatusEnvironmentBroken {
+		t.Errorf("expected report status broken, got %s", report.Status)
+	}
+
+	// Should report both variables missing
+	missingCount := 0
+	for _, check := range report.Checks {
+		if check.Group == "Environmental Alignment" && check.Status == output.CheckFailed && strings.Contains(check.Name, "missing from .env") {
+			missingCount++
+		}
+	}
+	if missingCount != 2 {
+		t.Errorf("expected 2 missing variables, got %d", missingCount)
+	}
+
+	// 2. Define one key properly and the other as placeholder
+	activeEnv := map[string]string{
+		"REQ_VAR":         "valid-value",
+		"PLACEHOLDER_VAR": "change-me-please",
+	}
+
+	engine = NewEngine(tempDir, composePath, activeEnv, comp, mockDocker)
+	report = engine.Run(context.Background())
+	// Overall status might be healthy if there are no failures (warnings don't fail)
+	if report.Status != output.StatusHealthy {
+		t.Errorf("expected status healthy (warnings are non-fatal), got %s", report.Status)
+	}
+
+	hasWarning := false
+	for _, check := range report.Checks {
+		if check.Group == "Environmental Alignment" && check.Status == output.CheckWarning && strings.Contains(check.Name, "Variable PLACEHOLDER_VAR has placeholder value") {
+			hasWarning = true
+		}
+	}
+	if !hasWarning {
+		t.Errorf("expected to find placeholder warning in checks: %+v", report.Checks)
+	}
+
+	// Schema Alignment Check should be CheckPassed because keys are present
+	hasSchemaPassed := false
+	for _, check := range report.Checks {
+		if check.Group == "Environmental Alignment" && check.Name == "Schema Alignment Check" && check.Status == output.CheckPassed {
+			hasSchemaPassed = true
+		}
+	}
+	if !hasSchemaPassed {
+		t.Errorf("expected Schema Alignment Check to pass in checks: %+v", report.Checks)
+	}
+}
+
 
 
 
