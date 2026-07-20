@@ -59,6 +59,15 @@ go install github.com/marcelo-lipienski/halo@latest
 
 ## Commands
 
+### `halo init`
+
+Merges keys from `.env.example` into `.env`.
+If `.env` does not exist, it copies `.env.example` verbatim, preserving comments and blank lines. If `.env` already exists, it only adds missing keys without overwriting your existing values. It automatically flags missing keys that require values before you run your application.
+
+```bash
+halo init
+```
+
 ### `halo check`
 
 Runs the full diagnostic suite and exits. This is the default command — running `halo` without a subcommand is equivalent to `halo check`.

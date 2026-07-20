@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-07-20
+
+### Added
+- `halo init`: smart `.env` merge command. Copies `.env.example` to `.env` if it does not exist, or merges missing keys into an existing `.env` without overwriting current values. Flags placeholder values that still need to be filled. Supports `--dry-run`.
+
 ## [1.0.0] — 2026-07-20
 
 ### Added
@@ -97,7 +102,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Mitigation strings use `docker compose` (modern CLI) instead of the deprecated `docker-compose`.
 - `exitWithSystemFailure` now respects the `--verbose` flag consistently.
 
-[Unreleased]: https://github.com/marcelo-lipienski/halo/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/marcelo-lipienski/halo/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/marcelo-lipienski/halo/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/marcelo-lipienski/halo/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/marcelo-lipienski/halo/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/marcelo-lipienski/halo/compare/v0.2.3...v0.2.4

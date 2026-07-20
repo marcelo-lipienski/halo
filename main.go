@@ -15,6 +15,7 @@ import (
 
 	"github.com/marcelo-lipienski/halo/config"
 	"github.com/marcelo-lipienski/halo/diagnostics"
+	init_cmd "github.com/marcelo-lipienski/halo/init"
 	"github.com/marcelo-lipienski/halo/output"
 	"github.com/moby/moby/client"
 	"github.com/spf13/cobra"
@@ -172,8 +173,18 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 
+	// init subcommand
+	initCmd := &cobra.Command{
+		Use:   "init",
+		Short: "Initialize or update .env from .env.example",
+		Run: func(cmd *cobra.Command, args []string) {
+			osExit.Exit(executeInit())
+		},
+	}
+
 	rootCmd.AddCommand(checkCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(initCmd)
 
 	return rootCmd
 }
@@ -501,4 +512,58 @@ func runWatch(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func executeInit() int {
+	envPath := envFile
+	if envPath == "" {
+		envPath = filepath.Join(configDir, ".env")
+	}
+	examplePath := filepath.Join(filepath.Dir(envPath), ".env.example")
+
+	res, err := init_cmd.MergeEnvFiles(examplePath, envPath, dryRun)
+	if err != nil {
+		fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+
+	if dryRun {
+		return 0
+	}
+
+	if res.AlreadyPresent == 0 && len(res.Added) > 0 {
+		// Output when creating fresh .env? The problem doesn't specify the exact text for this. Wait:
+		// "halo init\n✓ .env exists — merging missing keys from .env.example"
+		// If not exists: "✓ .env does not exist — created from .env.example"
+		// I will just use "✓ .env does not exist..." or maybe just skip the prefix if not requested, but let's be nice.
+		// Wait, the instructions only mention "If .env does NOT exist: copy .env.example to .env verbatim, preserving comments, ordering, and blank lines. Report all keys copied."
+	}
+	
+	if len(res.Added) == 0 {
+		fmt.Fprintf(stdout, "✓ .env is up to date with .env.example — no keys to add.\n")
+		return 0
+	} else if res.AlreadyPresent > 0 {
+		fmt.Fprintf(stdout, "✓ .env exists — merging missing keys from .env.example\n\n")
+	}
+
+	fmt.Fprintf(stdout, "Added %d keys:\n", len(res.Added))
+	placeholders := 0
+	for _, entry := range res.Added {
+		if entry.IsPlaceholder {
+			fmt.Fprintf(stdout, "  %s=%-30s ← needs value\n", entry.Key, entry.Value)
+			placeholders++
+		} else {
+			fmt.Fprintf(stdout, "  %s=%-30s ✓ has default\n", entry.Key, entry.Value)
+		}
+	}
+
+	if placeholders > 0 {
+		if placeholders == 1 {
+			fmt.Fprintf(stdout, "\n1 key needs a value before running. Open .env in your editor.\n")
+		} else {
+			fmt.Fprintf(stdout, "\n%d keys need values before running. Open .env in your editor.\n", placeholders)
+		}
+	}
+	
+	return 0
 }

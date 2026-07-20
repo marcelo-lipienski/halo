@@ -418,3 +418,35 @@ services:
 		t.Errorf("expected diagnostics report in output, got: %q", stdoutStr)
 	}
 }
+
+func TestCLIInit(t *testing.T) {
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	examplePath := filepath.Join(tmpDir, ".env.example")
+
+	exampleContent := "KEY1=value1\nKEY2=<required>\n"
+	if err := os.WriteFile(examplePath, []byte(exampleContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runInProcess([]string{"init", "--config-dir", tmpDir})
+	
+	if code != 0 {
+		t.Errorf("expected exit code 0, got %d", code)
+	}
+	if stderr != "" {
+		t.Errorf("expected no stderr, got %q", stderr)
+	}
+	if !strings.Contains(stdout, "Added 2 keys") {
+		t.Errorf("expected output to contain 'Added 2 keys', got %q", stdout)
+	}
+
+	// run again
+	stdout, stderr, code = runInProcess([]string{"init", "--config-dir", tmpDir})
+	if code != 0 {
+		t.Errorf("expected exit code 0, got %d", code)
+	}
+	if !strings.Contains(stdout, "up to date") {
+		t.Errorf("expected output to contain 'up to date', got %q", stdout)
+	}
+}
