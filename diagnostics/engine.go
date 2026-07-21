@@ -43,9 +43,10 @@ func (e *Engine) Run(ctx context.Context) *output.DiagnosticsReport {
 	var resultsA []output.CheckResult
 	var resultsB []output.CheckResult
 	var resultsC []output.CheckResult
+	var resultsD []output.CheckResult
 
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
 
 	// Group A: Environmental Alignment
 	go func() {
@@ -71,12 +72,21 @@ func (e *Engine) Run(ctx context.Context) *output.DiagnosticsReport {
 		resultsC = e.checkVolumeAndPermissions(gCtx)
 	}()
 
+	// Group D: Security Audits
+	go func() {
+		defer wg.Done()
+		gCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		resultsD = e.CheckGitignoreSecurity(gCtx)
+	}()
+
 	wg.Wait()
 
 	var results []output.CheckResult
 	results = append(results, resultsA...)
 	results = append(results, resultsB...)
 	results = append(results, resultsC...)
+	results = append(results, resultsD...)
 
 	// Determine overall status
 	status := output.StatusHealthy

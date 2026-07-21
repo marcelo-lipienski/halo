@@ -270,6 +270,7 @@ services:
 `
 	_ = os.WriteFile(composePath, []byte(composeContent), 0644)
 	_ = os.WriteFile(filepath.Join(tempDir, ".env"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, ".gitignore"), []byte(".env\n"), 0644)
 
 	stdoutStr, stderrStr, exitCode := runInProcess([]string{"check", "--config-dir", tempDir})
 	if exitCode != 0 {
@@ -368,6 +369,7 @@ services:
 `
 	_ = os.WriteFile(composePath, []byte(composeContent), 0644)
 	_ = os.WriteFile(filepath.Join(tempDir, ".env"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, ".gitignore"), []byte(".env\n"), 0644)
 
 	stdoutStr, stderrStr, exitCode := runInProcess([]string{"check", "--config-dir", tempDir, "--quiet"})
 	if exitCode != 0 {
@@ -385,6 +387,7 @@ func TestCLIMultipleCompose(t *testing.T) {
 	_ = os.WriteFile(composePath1, []byte("services:\n  web1:\n    image: nginx"), 0644)
 	_ = os.WriteFile(composePath2, []byte("services:\n  web2:\n    image: redis"), 0644)
 	_ = os.WriteFile(filepath.Join(tempDir, ".env"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, ".gitignore"), []byte(".env\n"), 0644)
 
 	stdoutStr, _, exitCode := runInProcess([]string{"check", "--compose-file", composePath1, "--compose-file", composePath2, "--config-dir", tempDir})
 	if exitCode != 0 {
@@ -408,6 +411,7 @@ services:
 `
 	_ = os.WriteFile(composePath, []byte(composeContent), 0644)
 	_ = os.WriteFile(filepath.Join(tempDir, ".env"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, ".gitignore"), []byte(".env\n"), 0644)
 
 	stdoutStr, _, exitCode := runInProcess([]string{"--config-dir", tempDir})
 	if exitCode != 0 {
@@ -465,6 +469,9 @@ func TestCLIEnvDrift(t *testing.T) {
 	if err := os.WriteFile(envPath, []byte("EXTRA=1\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte(".env\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	stdoutStr, _, _ := runInProcess([]string{"check", "--config-dir", tmpDir})
 
@@ -503,6 +510,9 @@ func TestCLIImageSecurity(t *testing.T) {
 	if err := os.WriteFile(envPath, []byte(""), 0644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte(".env\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	composeContent := `
 services:
   web:
@@ -529,6 +539,9 @@ func TestCLIDockerfileImageSecurity(t *testing.T) {
 	dockerfilePath := filepath.Join(tmpDir, "Dockerfile")
 
 	if err := os.WriteFile(envPath, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte(".env\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	composeContent := `
