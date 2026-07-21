@@ -16,54 +16,46 @@ type shellEnvRef struct {
 	required   bool   // True if expansion is required.
 }
 
-// parseShellWord parses shell-word to AST. Returns nil if empty.
-func parseShellWord(s string) *syntax.Word {
-	p := syntax.NewParser()
-	for w, _ := range p.WordsSeq(strings.NewReader(s)) {
-		return w
-	}
-	return nil
-}
-
 // extractShellEnvRefs parses parameter references from s. See ADR-0003.
 func extractShellEnvRefs(s string) []shellEnvRef {
-	word := parseShellWord(s)
-	if word == nil {
-		return nil
-	}
-
+	p := syntax.NewParser()
 	var refs []shellEnvRef
 	seen := make(map[string]bool)
 
-	syntax.Walk(word, func(node syntax.Node) bool {
-		pe, ok := node.(*syntax.ParamExp)
-		if !ok {
-			return true
+	for w, err := range p.WordsSeq(strings.NewReader(s)) {
+		if err != nil {
+			break
 		}
-		name := pe.Param.Value
-		if name == "" || seen[name] {
-			return true
-		}
-
-		// Skip special parameters.
-		if len(name) == 1 && !isAlphaNum(name[0]) {
-			return true
-		}
-
-		seen[name] = true
-
-		ref := shellEnvRef{name: name}
-		if pe.Exp != nil {
-			switch pe.Exp.Op {
-			case syntax.DefaultUnset, syntax.DefaultUnsetOrNull:
-				ref.hasDefault = true
-			case syntax.ErrorUnset, syntax.ErrorUnsetOrNull:
-				ref.required = true
+		syntax.Walk(w, func(node syntax.Node) bool {
+			pe, ok := node.(*syntax.ParamExp)
+			if !ok {
+				return true
 			}
-		}
-		refs = append(refs, ref)
-		return true
-	})
+			name := pe.Param.Value
+			if name == "" || seen[name] {
+				return true
+			}
+
+			// Skip special parameters.
+			if len(name) == 1 && !isAlphaNum(name[0]) {
+				return true
+			}
+
+			seen[name] = true
+
+			ref := shellEnvRef{name: name}
+			if pe.Exp != nil {
+				switch pe.Exp.Op {
+				case syntax.DefaultUnset, syntax.DefaultUnsetOrNull:
+					ref.hasDefault = true
+				case syntax.ErrorUnset, syntax.ErrorUnsetOrNull:
+					ref.required = true
+				}
+			}
+			refs = append(refs, ref)
+			return true
+		})
+	}
 
 	return refs
 }
@@ -78,11 +70,7 @@ func resolveShellExpr(s string, env map[string]string) string {
 		return s
 	}
 
-	word := parseShellWord(s)
-	if word == nil {
-		return s
-	}
-
+	p := syntax.NewParser()
 	cfg := &expand.Config{
 		Env: expand.FuncEnviron(func(name string) string {
 			// System env takes precedence over .env map. See ADR-0003.
@@ -93,17 +81,27 @@ func resolveShellExpr(s string, env map[string]string) string {
 		}),
 	}
 
-	result, err := expand.Literal(cfg, word)
-	if err != nil {
-		// Return empty string on unset/empty required variable. See ADR-0003.
-		var unsetErr expand.UnsetParameterError
-		if errors.As(err, &unsetErr) {
-			return ""
+	var parts []string
+	for w, err := range p.WordsSeq(strings.NewReader(s)) {
+		if err != nil {
+			return s
 		}
-		return s
+		result, err := expand.Literal(cfg, w)
+		if err != nil {
+			// Return empty string on unset/empty required variable. See ADR-0003.
+			var unsetErr expand.UnsetParameterError
+			if errors.As(err, &unsetErr) {
+				return ""
+			}
+			return s
+		}
+		parts = append(parts, result)
 	}
 
-	return result
+	if len(parts) == 0 {
+		return s
+	}
+	return strings.Join(parts, " ")
 }
 
 // ResolveShellExpr wraps resolveShellExpr.
