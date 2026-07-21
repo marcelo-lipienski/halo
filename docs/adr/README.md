@@ -11,7 +11,7 @@ Before modifying any package code, load the corresponding ADR context:
 | Package / Component | Related ADRs | Key Design Directives |
 | :--- | :--- | :--- |
 | `config` | [ADR-0003](0003-ast-config-parsing.md), [ADR-0013](0013-compose-merge-rules.md) | AST parsing via `mvdan.cc/sh/v3/expand`; deterministic override & merge precedence. |
-| `diagnostics` | [ADR-0004](0004-concurrent-diagnostic-lifecycle.md), [ADR-0005](0005-volume-permission-mitigation.md), [ADR-0006](0006-docker-api-graceful-degradation.md), [ADR-0011](0011-security-redaction-boundaries.md), [ADR-0015](0015-volume-write-permission-fix.md) | Concurrently execution in 3 groups; fix permissions; warning fallbacks for Docker socket offline; redact credentials; correct write auto-fix detection. |
+| `diagnostics` | [ADR-0004](0004-concurrent-diagnostic-lifecycle.md), [ADR-0005](0005-volume-permission-mitigation.md), [ADR-0006](0006-docker-api-graceful-degradation.md), [ADR-0011](0011-security-redaction-boundaries.md), [ADR-0015](0015-volume-write-permission-fix.md) | Concurrently execution in 4 groups; fix permissions; warning fallbacks for Docker socket offline; redact credentials; correct write auto-fix detection. |
 | `doctor` | [ADR-0002](0002-cli-exit-boundaries.md) | Diagnose system constraints: resources, space, and CLI dependencies. |
 | `snapshot` | [ADR-0010](0010-state-snapshot-drift-engine.md) | Collect system states into sorted JSON snapshots and compute differences. |
 | `output` | [ADR-0014](0014-rendering-log-boundaries.md) | Restrict stdout to checklist/JSON outputs; pipe diagnostics, warnings, and errors to stderr. |
