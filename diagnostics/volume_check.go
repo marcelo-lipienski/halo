@@ -27,7 +27,7 @@ var promptConfirm = func(question string) bool {
 		return false
 	}
 
-	fmt.Printf("%s [y/N]: ", question)
+	fmt.Fprintf(os.Stderr, "%s [y/N]: ", question)
 	var response string
 	_, err = fmt.Scanln(&response)
 	if err != nil {
