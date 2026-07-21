@@ -38,12 +38,14 @@ This document defines the strict engineering standards, architectural boundaries
 * All code must format perfectly with native `go fmt`.
 * Adhere to strict linting rules defined by `golangci-lint` configurations.
 * Keep functions tightly focused on a single responsibility. Return errors as the final value from functions and handle them immediately at the call site.
-* **Git & Branching Workflow:**
-  * AI agents must follow a clean branching strategy. Never merge feature branches to `master` locally.
-  * All development must happen in a dedicated feature branch.
-  * Once development and local testing are complete, push the feature branch to GitHub and create a Pull Request.
-  * Only merge the Pull Request via the GitHub interface after GitHub Actions CI runs successfully and is green.
-  * After the PR is merged on GitHub, check out the `master` branch locally and pull from the remote repository (`git checkout master && git pull origin master`) to update the local master.
+* **Git & Branching Workflow (GitHub Actions & PR Integration):**
+  * AI agents must follow a strict remote Pull Request merge workflow. Local merges to `master` are forbidden.
+  * All development must occur on dedicated feature branches.
+  * Once changes are complete and pass local tests, the agent must push the branch to GitHub.
+  * The agent is responsible for waiting for the GitHub Actions run to turn green (monitoring checks via the `gh` CLI).
+  * Once CI is green, the agent must open a Pull Request with a descriptive title and body via `gh pr create`.
+  * After creation, the agent must merge and close the PR via `gh pr merge --merge --delete-branch`.
+  * Finally, the agent must check out the local `master` branch and pull the remote updates (`git checkout master && git pull origin master`).
   * Group modifications into logical, atomic commits with descriptive commit messages.
   * AI agents must never add themselves as a co-author (e.g., using `Co-authored-by` metadata trailers) for git commits.
 
