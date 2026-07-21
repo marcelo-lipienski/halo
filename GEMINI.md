@@ -11,3 +11,7 @@
 ## 3. Workflow & Documentation
 - git/PR: Follow dedicated feature branching and remote PR merge workflow (see [ADR-0007](docs/adr/0007-git-pr-workflow.md)). No commit co-author tags.
 - Docs: Use the [ADR Index](docs/adr/README.md) for dynamic context loading; read only relevant ADRs.
+
+## 4. Communication & Response Style
+- Response Style: Always adhere to being strictly minimal. Skip preambles, conversational filler, and verbose step-by-step summaries. Focus purely on required code changes, tool calls, and terse execution notes.
+- Planning: Skip heavy planning artifacts unless explicitly instructed otherwise. For large tasks, provide a high-level task outline first and then prompt for user input.
