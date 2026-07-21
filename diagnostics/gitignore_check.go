@@ -138,10 +138,11 @@ func findEnvFiles(dir string) ([]string, error) {
 			return nil
 		}
 		name := info.Name()
-		if name == ".env.example" {
+		nameLower := strings.ToLower(name)
+		if strings.Contains(nameLower, "example") || strings.Contains(nameLower, "sample") || strings.Contains(nameLower, "template") {
 			return nil
 		}
-		if name == ".env" || strings.HasPrefix(name, ".env.") {
+		if name == ".env" || strings.HasPrefix(name, ".env.") || strings.HasPrefix(name, ".env-") || strings.HasPrefix(name, ".env_") {
 			files = append(files, path)
 		}
 		return nil

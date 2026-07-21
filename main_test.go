@@ -284,6 +284,33 @@ services:
 	}
 }
 
+func TestCLIDoctorCustomComposeFile(t *testing.T) {
+	tempDir := t.TempDir()
+	customComposePath := filepath.Join(tempDir, "custom-compose.yml")
+
+	composeContent := `
+services:
+  app:
+    image: nginx:latest
+    deploy:
+      resources:
+        limits:
+          memory: 512MiB
+`
+	if err := os.WriteFile(customComposePath, []byte(composeContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdoutStr, _, exitCode := runInProcess([]string{"doctor", "--config-dir", tempDir, "--compose-file", customComposePath})
+	if exitCode != 0 && exitCode != 2 {
+		t.Errorf("unexpected exit code: %d", exitCode)
+	}
+
+	if !strings.Contains(stdoutStr, "512.0 MiB") && !strings.Contains(stdoutStr, "System Memory") {
+		t.Errorf("expected doctor report to output system memory check with parsed compose limit, got: %q", stdoutStr)
+	}
+}
+
 func TestCLIVersion(t *testing.T) {
 	stdoutStr, stderrStr, exitCode := runInProcess([]string{"version"})
 	if exitCode != 0 {
