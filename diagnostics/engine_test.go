@@ -1161,9 +1161,9 @@ func TestParseHostPortProto(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
-			port, proto := parseHostPortProto(tc.input)
+			port, proto := ParseHostPortProto(tc.input)
 			if port != tc.expectedPort || proto != tc.expectedProto {
-				t.Errorf("parseHostPortProto(%q) = (%q, %q); expected (%q, %q)",
+				t.Errorf("ParseHostPortProto(%q) = (%q, %q); expected (%q, %q)",
 					tc.input, port, proto, tc.expectedPort, tc.expectedProto)
 			}
 		})
