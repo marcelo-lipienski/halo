@@ -256,6 +256,35 @@ type ComposeResourceLimits struct {
 	CPUs   string `yaml:"cpus"`
 }
 
+// ComposeBuild represents the build configuration of a service
+type ComposeBuild struct {
+	Context    string `yaml:"context"`
+	Dockerfile string `yaml:"dockerfile"`
+}
+
+// UnmarshalYAML custom decodes ComposeBuild to handle string context or detailed mapping formats
+func (cb *ComposeBuild) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.ScalarNode:
+		var s string
+		if err := value.Decode(&s); err != nil {
+			return err
+		}
+		cb.Context = s
+	case yaml.MappingNode:
+		var m struct {
+			Context    string `yaml:"context"`
+			Dockerfile string `yaml:"dockerfile"`
+		}
+		if err := value.Decode(&m); err != nil {
+			return err
+		}
+		cb.Context = m.Context
+		cb.Dockerfile = m.Dockerfile
+	}
+	return nil
+}
+
 // ComposeService represents a service inside docker-compose.yml
 type ComposeService struct {
 	Environment   ComposeEnvironment    `yaml:"environment"`
@@ -269,6 +298,7 @@ type ComposeService struct {
 	Entrypoint    StringOrSlice         `yaml:"entrypoint"`
 	Command       StringOrSlice         `yaml:"command"`
 	Deploy        ComposeDeploy         `yaml:"deploy"`
+	Build         ComposeBuild          `yaml:"build"`
 }
 
 // ComposeEnvironment is a custom map type to handle both string slice and map syntax for env vars
@@ -565,6 +595,13 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 				}
 			}
 			destSvc.Volumes = append(mergedVols, srcSvc.Volumes...)
+
+			if srcSvc.Deploy.Resources.Limits.Memory != "" || srcSvc.Deploy.Resources.Limits.CPUs != "" {
+				destSvc.Deploy = srcSvc.Deploy
+			}
+			if srcSvc.Build.Context != "" {
+				destSvc.Build = srcSvc.Build
+			}
 
 			merged.Services[svcName] = destSvc
 		}

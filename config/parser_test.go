@@ -753,3 +753,63 @@ func TestMergeComposeConfigsSecretsConfigs(t *testing.T) {
 		t.Errorf("unexpected config 1: %+v", web.Configs[1])
 	}
 }
+
+func TestParseComposeBuild(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web1:
+    build: .
+  web2:
+    build:
+      context: ./src
+      dockerfile: Dockerfile.prod
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose: %v", err)
+	}
+
+	cfg, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("unexpected error parsing compose: %v", err)
+	}
+
+	web1, ok := cfg.Services["web1"]
+	if !ok {
+		t.Fatal("web1 not found")
+	}
+	if web1.Build.Context != "." || web1.Build.Dockerfile != "" {
+		t.Errorf("unexpected web1 build: %+v", web1.Build)
+	}
+
+	web2, ok := cfg.Services["web2"]
+	if !ok {
+		t.Fatal("web2 not found")
+	}
+	if web2.Build.Context != "./src" || web2.Build.Dockerfile != "Dockerfile.prod" {
+		t.Errorf("unexpected web2 build: %+v", web2.Build)
+	}
+
+	// Test merging build block
+	cfg1 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				Build: ComposeBuild{Context: "."},
+			},
+		},
+	}
+	cfg2 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				Build: ComposeBuild{Context: "./src", Dockerfile: "Dockerfile.dev"},
+			},
+		},
+	}
+
+	merged := MergeComposeConfigs(cfg1, cfg2)
+	web := merged.Services["web"]
+	if web.Build.Context != "./src" || web.Build.Dockerfile != "Dockerfile.dev" {
+		t.Errorf("unexpected merged build: %+v", web.Build)
+	}
+}
