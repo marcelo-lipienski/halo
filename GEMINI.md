@@ -9,5 +9,5 @@
 - Quality: `go fmt`, `golangci-lint` compliance, single responsibility.
 
 ## 3. Workflow & Documentation
-- git/PR: Follow dedicated feature branching and remote PR merge workflow (see [ADR-0007](file:///home/catz/dev/halo/docs/adr/0007-git-pr-workflow.md)). No commit co-author tags.
-- Docs: Use the [ADR Index](file:///home/catz/dev/halo/docs/adr/README.md) for dynamic context loading; read only relevant ADRs.
+- git/PR: Follow dedicated feature branching and remote PR merge workflow (see [ADR-0007](docs/adr/0007-git-pr-workflow.md)). No commit co-author tags.
+- Docs: Use the [ADR Index](docs/adr/README.md) for dynamic context loading; read only relevant ADRs.

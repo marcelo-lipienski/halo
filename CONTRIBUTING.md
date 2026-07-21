@@ -36,8 +36,8 @@ make test
 ## Code Quality & Git Workflow
 
 To maintain a clean and standard codebase, contributors must follow the core styling and quality rules defined in:
-* [GEMINI.md](file:///home/catz/dev/halo/GEMINI.md) — Coding styles, linting commands, and Test-Driven Development (TDD) table-test constraints.
-* [Git & Pull Request Workflow ADR](file:///home/catz/dev/halo/docs/adr/0007-git-pr-workflow.md) — Detailed instructions on branch names, commit formats, CI builds, merging, and release tagging.
+* [GEMINI.md](GEMINI.md) — Coding styles, linting commands, and Test-Driven Development (TDD) table-test constraints.
+* [Git & Pull Request Workflow ADR](docs/adr/0007-git-pr-workflow.md) — Detailed instructions on branch names, commit formats, CI builds, merging, and release tagging.
 
 ---
 
