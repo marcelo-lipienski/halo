@@ -489,3 +489,9 @@ var getOccupyingProcessFunc = func(port string, proto string) (string, int, erro
 
 	return "", 0, fmt.Errorf("no occupying process found")
 }
+
+// GetOccupyingProcess is an exported wrapper around getOccupyingProcessFunc
+func GetOccupyingProcess(port string, proto string) (string, int, error) {
+	return getOccupyingProcessFunc(port, proto)
+}
+

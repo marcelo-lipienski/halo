@@ -126,3 +126,9 @@ func resolveShellExpr(s string, env map[string]string) string {
 
 	return result
 }
+
+// ResolveShellExpr is an exported wrapper around resolveShellExpr
+func ResolveShellExpr(s string, env map[string]string) string {
+	return resolveShellExpr(s, env)
+}
+

@@ -558,3 +558,61 @@ FROM alpine:latest
 		t.Errorf("expected mutable base image warning in output, got: %q", stdoutStr)
 	}
 }
+
+func TestCLISnapshotAndDiff(t *testing.T) {
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+
+	if err := os.WriteFile(envPath, []byte("DB_HOST=localhost\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	composeContent := `
+services:
+  web:
+    image: nginx:alpine
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	snapFile := filepath.Join(tmpDir, "custom-snapshot.json")
+
+	// 1. Run snapshot
+	stdoutStr, stderrStr, exitCode := runInProcess([]string{"snapshot", snapFile, "--config-dir", tmpDir})
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0 on snapshot, got %d. stderr: %s", exitCode, stderrStr)
+	}
+	if !strings.Contains(stdoutStr, "Captured state snapshot") {
+		t.Errorf("expected snapshot confirmation, got: %q", stdoutStr)
+	}
+
+	// Verify file exists
+	if _, err := os.Stat(snapFile); err != nil {
+		t.Fatalf("snapshot file was not created: %v", err)
+	}
+
+	// 2. Run diff (no changes)
+	stdoutStr, stderrStr, exitCode = runInProcess([]string{"diff", snapFile, "--config-dir", tmpDir})
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0 on no-change diff, got %d. stderr: %s", exitCode, stderrStr)
+	}
+	if !strings.Contains(stdoutStr, "Environment matches snapshot exactly") {
+		t.Errorf("expected matching environment message, got: %q", stdoutStr)
+	}
+
+	// 3. Modify env file
+	if err := os.WriteFile(envPath, []byte("DB_HOST=localhost\nNEW_VAR=hello\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 4. Run diff (has changes)
+	stdoutStr, stderrStr, exitCode = runInProcess([]string{"diff", snapFile, "--config-dir", tmpDir})
+	if exitCode != 2 {
+		t.Errorf("expected exit code 2 on modified diff, got %d. stderr: %s, stdout: %s", exitCode, stderrStr, stdoutStr)
+	}
+	if !strings.Contains(stdoutStr, "NEW_VAR: added") {
+		t.Errorf("expected added variable in diff output, got: %q", stdoutStr)
+	}
+}
+
