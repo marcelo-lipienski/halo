@@ -303,6 +303,9 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 		results = append(results, driftResults...)
 	}
 
+	imageResults := e.CheckImageTags()
+	results = append(results, imageResults...)
+
 	return results
 }
 

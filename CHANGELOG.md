@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+### Added
+- Image Tag Security Audit: scans compose service image tags and warns on mutable/unlocked tags (like `:latest`, `:dev`, `:staging`, or implicitly using `:latest` by omitting tags) to ensure reproducible and safe environments.
+
 ## [1.3.0] — 2026-07-20
 
 ### Added
