@@ -441,7 +441,7 @@ func TestCLIInit(t *testing.T) {
 	}
 
 	// run again
-	stdout, stderr, code = runInProcess([]string{"init", "--config-dir", tmpDir})
+	stdout, _, code = runInProcess([]string{"init", "--config-dir", tmpDir})
 	if code != 0 {
 		t.Errorf("expected exit code 0, got %d", code)
 	}
@@ -456,19 +456,25 @@ func TestCLIEnvDrift(t *testing.T) {
 	examplePath := filepath.Join(tmpDir, ".env.example")
 	composePath := filepath.Join(tmpDir, "docker-compose.yml")
 
-	os.WriteFile(composePath, []byte("services:\n  web:\n    image: nginx\n"), 0644)
-	os.WriteFile(examplePath, []byte("DB_URL=<required>\n"), 0644)
-	os.WriteFile(envPath, []byte("EXTRA=1\n"), 0644)
-
-	stdout, _, _ := runInProcess([]string{"check", "--config-dir", tmpDir})
-
-	if !strings.Contains(stdout, ".env.example Drift") {
-		t.Errorf("expected drift check in output, got %q", stdout)
+	if err := os.WriteFile(composePath, []byte("services:\n  web:\n    image: nginx\n"), 0644); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(stdout, "missing from .env") {
+	if err := os.WriteFile(examplePath, []byte("DB_URL=<required>\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(envPath, []byte("EXTRA=1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdoutStr, _, _ := runInProcess([]string{"check", "--config-dir", tmpDir})
+
+	if !strings.Contains(stdoutStr, ".env.example Drift") {
+		t.Errorf("expected drift check in output, got %q", stdoutStr)
+	}
+	if !strings.Contains(stdoutStr, "missing from .env") {
 		t.Errorf("expected missing keys error in output")
 	}
-	if !strings.Contains(stdout, "Undeclared Keys") {
+	if !strings.Contains(stdoutStr, "Undeclared Keys") {
 		t.Errorf("expected undeclared keys in output")
 	}
 }

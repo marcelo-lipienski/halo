@@ -2,6 +2,7 @@ package init_cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -139,25 +140,29 @@ func MergeEnvFiles(examplePath, targetPath string, dryRun bool) (Result, error) 
 				if err != nil {
 					return result, err
 				}
-				defer out.Close()
+				defer func() {
+					_ = out.Close()
+				}()
 
 				info, err := os.Stat(targetPath)
 				if err == nil && info.Size() > 0 {
 					f, err := os.Open(targetPath)
 					if err == nil {
-						f.Seek(-1, 2)
-						b := make([]byte, 1)
-						f.Read(b)
-						f.Close()
-						if b[0] != '\n' {
-							out.WriteString("\n")
+						if _, errSeek := f.Seek(-1, io.SeekEnd); errSeek == nil {
+							b := make([]byte, 1)
+							if _, errRead := f.Read(b); errRead == nil {
+								if b[0] != '\n' {
+									_, _ = out.WriteString("\n")
+								}
+							}
 						}
+						_ = f.Close()
 					}
 				}
 
-				out.WriteString("\n# Added by halo init\n")
+				_, _ = out.WriteString("\n# Added by halo init\n")
 				for _, l := range linesToAdd {
-					out.WriteString(l + "\n")
+					_, _ = out.WriteString(l + "\n")
 				}
 			}
 		} else {
@@ -165,9 +170,11 @@ func MergeEnvFiles(examplePath, targetPath string, dryRun bool) (Result, error) 
 			if err != nil {
 				return result, err
 			}
-			defer out.Close()
+			defer func() {
+				_ = out.Close()
+			}()
 			for _, l := range linesToAdd {
-				out.WriteString(l + "\n")
+				_, _ = out.WriteString(l + "\n")
 			}
 		}
 	}
