@@ -33,49 +33,11 @@ make test
 
 ---
 
-## Development Workflow
+## Code Quality & Git Workflow
 
-### Branching Strategy
-
-- **Always** branch off `master`.
-- Name feature branches descriptively: `feat/volume-health-check`, `fix/env-regex-default`, etc.
-- Open a pull request back to `master` once all tests pass.
-
-### Commit Style
-
-- Write atomic commits with clear, imperative subject lines (≤ 72 chars):
-  ```
-  fix: respect io.EOF sentinel in isReadable
-  feat: add summary line to text renderer output
-  ```
-- Group logically related changes into a single commit. Avoid `WIP` commits in PRs.
-- **Do not** include `Co-authored-by` AI metadata trailers.
-
----
-
-## Code Standards
-
-This project enforces the standards defined in [`AI_GUIDELINES.md`](./AI_GUIDELINES.md):
-
-- Run `make fmt` to check formatting (or `make fmt-fix` to apply it).
-- Run `make vet` before every commit.
-- Run `make lint` (requires `golangci-lint`) for deeper static analysis.
-
-### Test-Driven Development
-
-A new feature or bug fix is **not complete** without matching tests:
-
-1. Write the test first (or alongside the code).
-2. Use table-driven tests in `_test.go` files co-located with the package.
-3. Add benchmark tests (`func Benchmark...`) for any new parsing or filesystem traversal logic.
-
-```bash
-# Run all tests
-make test
-
-# Run benchmarks
-make bench
-```
+To maintain a clean and standard codebase, contributors must follow the core styling and quality rules defined in:
+* [GEMINI.md](file:///home/catz/dev/halo/GEMINI.md) — Coding styles, linting commands, and Test-Driven Development (TDD) table-test constraints.
+* [Git & Pull Request Workflow ADR](file:///home/catz/dev/halo/docs/adr/0007-git-pr-workflow.md) — Detailed instructions on branch names, commit formats, CI builds, merging, and release tagging.
 
 ---
 
@@ -94,7 +56,6 @@ VERSION=v0.2.4 make build
 ## Reporting Issues
 
 Please include:
-
 1. The output of `halo version`.
 2. A minimal `docker-compose.yml` and `.env` that reproduces the issue.
 3. The full `halo check --verbose` output.

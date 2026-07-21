@@ -1,0 +1,4 @@
+# Exclude historical, legal, and non-coding docs from AI indexing to save context tokens
+docs/CHANGELOG_ARCHIVE.md
+LICENSE
+SECURITY.md

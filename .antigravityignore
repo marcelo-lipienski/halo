@@ -1,0 +1,4 @@
+# Exclude historical, legal, and non-coding docs from Antigravity workspace indexing
+docs/CHANGELOG_ARCHIVE.md
+LICENSE
+SECURITY.md
