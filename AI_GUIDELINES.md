@@ -38,8 +38,12 @@ This document defines the strict engineering standards, architectural boundaries
 * All code must format perfectly with native `go fmt`.
 * Adhere to strict linting rules defined by `golangci-lint` configurations.
 * Keep functions tightly focused on a single responsibility. Return errors as the final value from functions and handle them immediately at the call site.
-* **Git Commits:**
-  * AI agents must follow clean git branching strategies: develop in dedicated feature branches, and merge them back to the main branch (`master`) only after tests and validations pass.
+* **Git & Branching Workflow:**
+  * AI agents must follow a clean branching strategy. Never merge feature branches to `master` locally.
+  * All development must happen in a dedicated feature branch.
+  * Once development and local testing are complete, push the feature branch to GitHub and create a Pull Request.
+  * Only merge the Pull Request via the GitHub interface after GitHub Actions CI runs successfully and is green.
+  * After the PR is merged on GitHub, check out the `master` branch locally and pull from the remote repository (`git checkout master && git pull origin master`) to update the local master.
   * Group modifications into logical, atomic commits with descriptive commit messages.
   * AI agents must never add themselves as a co-author (e.g., using `Co-authored-by` metadata trailers) for git commits.
 
