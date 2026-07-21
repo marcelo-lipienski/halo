@@ -14,8 +14,13 @@ func TestParseBytes(t *testing.T) {
 		wantErr  bool
 	}{
 		{"50M", 50 * 1024 * 1024, false},
+		{"512MiB", 512 * 1024 * 1024, false},
 		{"2G", 2 * 1024 * 1024 * 1024, false},
+		{"2GiB", 2 * 1024 * 1024 * 1024, false},
 		{"1024K", 1024 * 1024, false},
+		{"100KiB", 100 * 1024, false},
+		{"1TiB", 1 * 1024 * 1024 * 1024 * 1024, false},
+		{"50Mi", 50 * 1024 * 1024, false},
 		{"100b", 100, false},
 		{"", 0, false},
 		{"50", 50, false},

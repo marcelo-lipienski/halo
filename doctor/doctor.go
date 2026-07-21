@@ -37,12 +37,14 @@ func ParseBytes(val string) (uint64, error) {
 	switch unit {
 	case "b", "":
 		return num, nil
-	case "k", "kb":
+	case "k", "kb", "kib", "ki":
 		return num * 1024, nil
-	case "m", "mb":
+	case "m", "mb", "mib", "mi":
 		return num * 1024 * 1024, nil
-	case "g", "gb":
+	case "g", "gb", "gib", "gi":
 		return num * 1024 * 1024 * 1024, nil
+	case "t", "tb", "tib", "ti":
+		return num * 1024 * 1024 * 1024 * 1024, nil
 	}
 	return num, nil
 }

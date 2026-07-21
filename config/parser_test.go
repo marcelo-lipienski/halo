@@ -676,6 +676,41 @@ func TestMergeComposeConfigsWithEnvFiles(t *testing.T) {
 	}
 }
 
+func TestMergeComposeConfigsDuplicateEnvFiles(t *testing.T) {
+	cfg1 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				EnvFiles: ComposeEnvFiles{
+					{File: ".env.common", Required: true},
+					{File: ".env.app", Required: true},
+				},
+			},
+		},
+	}
+	cfg2 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				EnvFiles: ComposeEnvFiles{
+					{File: ".env.common", Required: true},
+					{File: ".env.override", Required: false},
+				},
+			},
+		},
+	}
+
+	merged := MergeComposeConfigs(cfg1, cfg2)
+	web := merged.Services["web"]
+	if len(web.EnvFiles) != 3 {
+		t.Fatalf("expected 3 deduplicated env_files after merge, got %d", len(web.EnvFiles))
+	}
+	expected := []string{".env.common", ".env.app", ".env.override"}
+	for i, name := range expected {
+		if web.EnvFiles[i].File != name {
+			t.Errorf("expected env_file[%d] to be %s, got %s", i, name, web.EnvFiles[i].File)
+		}
+	}
+}
+
 func TestParseComposeSecretsConfigs(t *testing.T) {
 	tempDir := t.TempDir()
 	composePath := filepath.Join(tempDir, "docker-compose.yml")
