@@ -224,9 +224,7 @@ func matchGitignorePattern(pattern string, relPath string) (bool, error) {
 		return false, nil
 	}
 
-	if strings.HasPrefix(pattern, "!") {
-		pattern = pattern[1:]
-	}
+	pattern = strings.TrimPrefix(pattern, "!")
 
 	// Anchored patterns contain a slash (not at the end) or start with a slash
 	anchored := false
