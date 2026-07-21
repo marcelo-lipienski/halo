@@ -2,6 +2,8 @@ package diagnostics
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/marcelo-lipienski/halo/config"
@@ -151,4 +153,76 @@ func contains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestCheckDockerfileImageTags(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// 1. Create a Dockerfile with a mutable base image
+	dockerfileContent := `
+# A comment
+FROM --platform=linux/amd64 nginx:latest AS base
+FROM base AS runner
+RUN echo "hello"
+`
+	if err := os.WriteFile(filepath.Join(tempDir, "Dockerfile"), []byte(dockerfileContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	comp := &config.ComposeConfig{
+		Services: map[string]config.ComposeService{
+			"web": {
+				Build: config.ComposeBuild{
+					Context:    ".",
+					Dockerfile: "Dockerfile",
+				},
+			},
+		},
+	}
+
+	engine := NewEngine(tempDir, filepath.Join(tempDir, "docker-compose.yml"), nil, comp, nil)
+	results := engine.CheckImageTags()
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	res := results[0]
+	if res.Name != "Image Security (Dockerfile): web" {
+		t.Errorf("expected check name 'Image Security (Dockerfile): web', got %q", res.Name)
+	}
+	if res.Status != output.CheckWarning {
+		t.Errorf("expected check status warning, got %s", res.Status)
+	}
+	if !contains(res.Error, "mutable base image(s) in Dockerfile: base image 'nginx:latest' (mutable tag 'latest')") {
+		t.Errorf("unexpected error message: %q", res.Error)
+	}
+
+	// 2. Create a Dockerfile with a pinned base image
+	dockerfileContent2 := `
+FROM golang:1.20-alpine
+`
+	if err := os.WriteFile(filepath.Join(tempDir, "Dockerfile.pinned"), []byte(dockerfileContent2), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	comp2 := &config.ComposeConfig{
+		Services: map[string]config.ComposeService{
+			"api": {
+				Build: config.ComposeBuild{
+					Context:    ".",
+					Dockerfile: "Dockerfile.pinned",
+				},
+			},
+		},
+	}
+
+	engine2 := NewEngine(tempDir, filepath.Join(tempDir, "docker-compose.yml"), nil, comp2, nil)
+	results2 := engine2.CheckImageTags()
+
+	if len(results2) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results2))
+	}
+	if results2[0].Status != output.CheckPassed {
+		t.Errorf("expected check to pass, got %s. Error: %s", results2[0].Status, results2[0].Error)
+	}
 }

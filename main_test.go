@@ -521,3 +521,40 @@ services:
 		t.Errorf("expected mutable tag warning in output, got: %q", stdoutStr)
 	}
 }
+
+func TestCLIDockerfileImageSecurity(t *testing.T) {
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+	dockerfilePath := filepath.Join(tmpDir, "Dockerfile")
+
+	if err := os.WriteFile(envPath, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+	composeContent := `
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	dockerfileContent := `
+FROM alpine:latest
+`
+	if err := os.WriteFile(dockerfilePath, []byte(dockerfileContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdoutStr, _, _ := runInProcess([]string{"check", "--config-dir", tmpDir, "--verbose"})
+
+	if !strings.Contains(stdoutStr, "Image Security (Dockerfile): web") {
+		t.Errorf("expected Image Security (Dockerfile) in output, got: %q", stdoutStr)
+	}
+	if !strings.Contains(stdoutStr, "base image 'alpine:latest'") {
+		t.Errorf("expected mutable base image warning in output, got: %q", stdoutStr)
+	}
+}
