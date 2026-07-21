@@ -8,6 +8,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-07-20
+
+### Added
+- `halo doctor` command: system-level prerequisites scanner that evaluates Docker CLI/Compose v2 installation, Docker Engine version, required CLI tools in `$PATH` (`git`, `make`, `docker`), system memory availability vs limits declared in compose files, and free disk space.
+
 ## [1.2.0] — 2026-07-20
 
 ### Added
@@ -107,7 +112,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Mitigation strings use `docker compose` (modern CLI) instead of the deprecated `docker-compose`.
 - `exitWithSystemFailure` now respects the `--verbose` flag consistently.
 
-[Unreleased]: https://github.com/marcelo-lipienski/halo/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/marcelo-lipienski/halo/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/marcelo-lipienski/halo/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/marcelo-lipienski/halo/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/marcelo-lipienski/halo/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/marcelo-lipienski/halo/compare/v0.3.0...v1.0.0

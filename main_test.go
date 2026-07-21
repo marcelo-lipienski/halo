@@ -478,3 +478,19 @@ func TestCLIEnvDrift(t *testing.T) {
 		t.Errorf("expected undeclared keys in output")
 	}
 }
+
+func TestCLIDoctor(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	stdoutStr, _, code := runInProcess([]string{"doctor", "--config-dir", tmpDir})
+	if code != 0 && code != 2 {
+		t.Errorf("expected exit code 0 or 2, got %d", code)
+	}
+
+	if !strings.Contains(stdoutStr, "System Prerequisites") {
+		t.Errorf("expected doctor report group 'System Prerequisites', got %q", stdoutStr)
+	}
+	if !strings.Contains(stdoutStr, "Host Resources") {
+		t.Errorf("expected doctor report group 'Host Resources', got %q", stdoutStr)
+	}
+}

@@ -76,6 +76,19 @@ Runs the full diagnostic suite and exits. This is the default command — runnin
 halo check
 ```
 
+### `halo doctor`
+
+Inspects host system-level prerequisites:
+* **Docker CLI & Compose v2**: Verifies if Docker Compose v2 is installed (runs `docker compose version` and falls back to check for Compose v1 with warnings).
+* **Docker Engine Version**: Inspects running Docker Engine API version (checks for connection availability and version).
+* **Required CLI Tools**: Checks for `git`, `make`, and `docker` in system `$PATH`.
+* **System Memory limits**: Queries total host memory and compares it against memory limit sum declared under `deploy.resources.limits.memory` in docker-compose services.
+* **Free Disk Space**: Queries free space on the current drive and warns if under 2.0 GiB.
+
+```bash
+halo doctor
+```
+
 ### `halo version`
 
 Prints the binary version, build commit SHA, and Go runtime details.

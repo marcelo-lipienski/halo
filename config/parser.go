@@ -239,6 +239,23 @@ func (csc *ComposeServiceConfigs) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// ComposeDeploy represents the deploy section in compose service
+type ComposeDeploy struct {
+	Resources ComposeResources `yaml:"resources"`
+}
+
+// ComposeResources represents resource constraints in deploy section
+type ComposeResources struct {
+	Limits       ComposeResourceLimits `yaml:"limits"`
+	Reservations ComposeResourceLimits `yaml:"reservations"`
+}
+
+// ComposeResourceLimits represents memory and cpu constraints
+type ComposeResourceLimits struct {
+	Memory string `yaml:"memory"`
+	CPUs   string `yaml:"cpus"`
+}
+
 // ComposeService represents a service inside docker-compose.yml
 type ComposeService struct {
 	Environment   ComposeEnvironment    `yaml:"environment"`
@@ -251,6 +268,7 @@ type ComposeService struct {
 	ContainerName string                `yaml:"container_name"`
 	Entrypoint    StringOrSlice         `yaml:"entrypoint"`
 	Command       StringOrSlice         `yaml:"command"`
+	Deploy        ComposeDeploy         `yaml:"deploy"`
 }
 
 // ComposeEnvironment is a custom map type to handle both string slice and map syntax for env vars
