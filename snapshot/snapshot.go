@@ -67,8 +67,6 @@ func computeSHA256(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-
-
 // CreateSnapshot captures local environment state. See ADR-0002.
 func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*EnvironmentSnapshot, []string, error) {
 	var warnings []string

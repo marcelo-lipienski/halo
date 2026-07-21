@@ -260,7 +260,7 @@ func runWatch(ctx context.Context) {
 		}
 	}
 
-	fmt.Fprintln(stdout, "\nWatching for configuration changes... (Press Ctrl+C to stop)")
+	fmt.Fprintln(stderr, "\nWatching for configuration changes... (Press Ctrl+C to stop)")
 
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -299,10 +299,10 @@ func runWatch(ctx context.Context) {
 			}
 
 			if changed {
-				fmt.Fprint(stdout, "\033[H\033[2J")
-				fmt.Fprintln(stdout, "Change detected! Re-running diagnostics...")
+				fmt.Fprint(stderr, "\033[H\033[2J")
+				fmt.Fprintln(stderr, "Change detected! Re-running diagnostics...")
 				_ = executeCheck()
-				fmt.Fprintln(stdout, "\nWatching for configuration changes... (Press Ctrl+C to stop)")
+				fmt.Fprintln(stderr, "\nWatching for configuration changes... (Press Ctrl+C to stop)")
 			}
 		}
 	}

@@ -331,8 +331,8 @@ func TestCLIWatchMode(t *testing.T) {
 	// Wait for watch mode to execute initial run and print watch prompt.
 	time.Sleep(200 * time.Millisecond)
 
-	prompt := outBuf.String()
-	outBuf.Reset()
+	prompt := errBuf.String()
+	errBuf.Reset()
 
 	// Trigger a file change
 	_ = os.WriteFile(envPath, []byte("APP_NAME=test"), 0644)
@@ -340,7 +340,7 @@ func TestCLIWatchMode(t *testing.T) {
 	// Wait for reload ticker to fire and print the change detection log.
 	time.Sleep(300 * time.Millisecond)
 
-	reloaded := outBuf.String()
+	reloaded := errBuf.String()
 
 	// Stop watcher and wait until the goroutine has fully exited before
 	// restoring globals — this eliminates the data race with the next test.
