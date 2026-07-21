@@ -2369,3 +2369,117 @@ func TestGetPermissionMitigation(t *testing.T) {
 		}
 	}
 }
+
+func TestEngineVolumeWriteAutofix(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping Unix-specific chmod test on Windows")
+	}
+
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+
+	volDir := filepath.Join(tempDir, "unwritable_vol")
+	if err := os.Mkdir(volDir, 0755); err != nil {
+		t.Fatalf("failed to create volDir: %v", err)
+	}
+
+	composeContent := fmt.Sprintf(`
+services:
+  app:
+    image: nginx
+    volumes:
+      - %s:/data
+`, volDir)
+
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	if err := os.Chmod(volDir, 0555); err != nil {
+		t.Fatalf("failed to chmod volDir: %v", err)
+	}
+	defer func() {
+		_ = os.Chmod(volDir, 0755)
+	}()
+
+	engine := NewEngine(tempDir, composePath, map[string]string{}, comp, nil)
+	engine.AutoFix = true
+
+	report := engine.Run(context.Background())
+
+	if report.Status != output.StatusHealthy {
+		t.Errorf("expected report status to be healthy, got: %s. Checks: %+v", report.Status, report.Checks)
+	}
+
+	info, err := os.Stat(volDir)
+	if err != nil {
+		t.Fatalf("failed to stat volDir: %v", err)
+	}
+	expectedMode := os.FileMode(0755)
+	if (info.Mode() & 0777) != expectedMode {
+		t.Errorf("expected mode %o, got %o", expectedMode, info.Mode()&0777)
+	}
+}
+
+func TestEngineVolumeWriteDryRun(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping Unix-specific chmod test on Windows")
+	}
+
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	volDir := filepath.Join(tempDir, "unwritable_vol")
+	if err := os.Mkdir(volDir, 0755); err != nil {
+		t.Fatalf("failed to create volDir: %v", err)
+	}
+
+	composeContent := fmt.Sprintf(`
+services:
+  app:
+    image: nginx
+    volumes:
+      - %s:/data
+`, volDir)
+
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose: %v", err)
+	}
+
+	if err := os.Chmod(volDir, 0555); err != nil {
+		t.Fatalf("failed to chmod volDir: %v", err)
+	}
+	defer func() {
+		_ = os.Chmod(volDir, 0755)
+	}()
+
+	engine := NewEngine(tempDir, composePath, map[string]string{}, comp, nil)
+	engine.DryRun = true
+
+	report := engine.Run(context.Background())
+
+	if report.Status != output.StatusEnvironmentBroken {
+		t.Errorf("expected report status to be environment_broken, got: %s", report.Status)
+	}
+
+	foundFailure := false
+	for _, check := range report.Checks {
+		if check.Group == "Volume & File Permissions" && check.Status == output.CheckFailed {
+			if strings.Contains(check.Name, "Volume permission lockout") {
+				foundFailure = true
+			}
+		}
+	}
+	if !foundFailure {
+		t.Error("expected to find failed volume permission lockout check result")
+	}
+}
