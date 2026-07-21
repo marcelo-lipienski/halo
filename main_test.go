@@ -494,3 +494,30 @@ func TestCLIDoctor(t *testing.T) {
 		t.Errorf("expected doctor report group 'Host Resources', got %q", stdoutStr)
 	}
 }
+
+func TestCLIImageSecurity(t *testing.T) {
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+
+	if err := os.WriteFile(envPath, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+	composeContent := `
+services:
+  web:
+    image: nginx:latest
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdoutStr, _, _ := runInProcess([]string{"check", "--config-dir", tmpDir, "--verbose"})
+
+	if !strings.Contains(stdoutStr, "Image Security: web") {
+		t.Errorf("expected Image Security in output, got: %q", stdoutStr)
+	}
+	if !strings.Contains(stdoutStr, "mutable tag 'latest'") {
+		t.Errorf("expected mutable tag warning in output, got: %q", stdoutStr)
+	}
+}

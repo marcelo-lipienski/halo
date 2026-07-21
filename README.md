@@ -226,6 +226,8 @@ halo check --format text
 # [Environmental Alignment]
 #   ✓ Variables Check
 #   ✓ Mismatched Types Check
+#   ✓ .env.example Drift
+#   ✓ Image Security: web
 #
 # [Network & Port Availability]
 #   ✓ Port 8080 availability
