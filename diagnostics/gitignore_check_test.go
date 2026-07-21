@@ -128,3 +128,32 @@ func TestCheckGitignoreSecurity(t *testing.T) {
 		t.Errorf("expected negated .env to fail and .env.local to pass, got: %+v", results)
 	}
 }
+
+func TestFindEnvFilesNamingPatterns(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	_ = os.WriteFile(filepath.Join(tmpDir, ".env"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, ".env-local"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, ".env_prod"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, ".env.example"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, ".env-sample"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, ".env_template"), []byte(""), 0644)
+
+	files, err := findEnvFiles(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error finding env files: %v", err)
+	}
+
+	foundMap := make(map[string]bool)
+	for _, f := range files {
+		foundMap[filepath.Base(f)] = true
+	}
+
+	if !foundMap[".env"] || !foundMap[".env-local"] || !foundMap[".env_prod"] {
+		t.Errorf("expected secret env files to be found, got: %v", files)
+	}
+
+	if foundMap[".env.example"] || foundMap[".env-sample"] || foundMap[".env_template"] {
+		t.Errorf("expected example/sample/template files to be ignored, got: %v", files)
+	}
+}

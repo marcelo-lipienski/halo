@@ -20,18 +20,38 @@ func executeDoctor() int {
 		return 1
 	}
 
-	var comp *config.ComposeConfig
-	composePathYml := filepath.Join(configDir, "docker-compose.yml")
-	composePathYaml := filepath.Join(configDir, "docker-compose.yaml")
-	composePath := composePathYaml
-	if _, err := os.Stat(composePathYml); err == nil {
-		composePath = composePathYml
-	}
-	if _, err := os.Stat(composePath); err == nil {
-		parsedComp, err := config.ParseCompose(composePath)
-		if err == nil {
-			comp = parsedComp
+	var filesToLoad []string
+	if len(composeFiles) > 0 {
+		filesToLoad = composeFiles
+	} else {
+		composePathYml := filepath.Join(configDir, "docker-compose.yml")
+		composePathYaml := filepath.Join(configDir, "docker-compose.yaml")
+		composePath := composePathYaml
+		if _, err := os.Stat(composePathYml); err == nil {
+			composePath = composePathYml
 		}
+		filesToLoad = append(filesToLoad, composePath)
+
+		overridePathYml := filepath.Join(configDir, "docker-compose.override.yml")
+		overridePathYaml := filepath.Join(configDir, "docker-compose.override.yaml")
+		if _, err := os.Stat(overridePathYml); err == nil {
+			filesToLoad = append(filesToLoad, overridePathYml)
+		} else if _, err := os.Stat(overridePathYaml); err == nil {
+			filesToLoad = append(filesToLoad, overridePathYaml)
+		}
+	}
+
+	var parsedConfigs []*config.ComposeConfig
+	for _, file := range filesToLoad {
+		if _, err := os.Stat(file); err == nil {
+			if parsed, err := config.ParseCompose(file); err == nil {
+				parsedConfigs = append(parsedConfigs, parsed)
+			}
+		}
+	}
+	var comp *config.ComposeConfig
+	if len(parsedConfigs) > 0 {
+		comp = config.MergeComposeConfigs(parsedConfigs...)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
