@@ -122,6 +122,7 @@ func MergeEnvFiles(examplePath, targetPath string, dryRun bool) (Result, error) 
 		}
 
 		linesToAdd = append(linesToAdd, line)
+		existingKeys[key] = true
 
 		addedEntries = append(addedEntries, EnvEntry{
 			Key:           key,
