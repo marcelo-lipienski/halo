@@ -19,9 +19,7 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// resolveEnvVars expands shell parameter expressions in s using the .env map
-// and host OS environment. It delegates to resolveShellExpr for full shell-spec
-// compliance including ${VAR:-default} and ${VAR:?error} forms.
+// resolveEnvVars expands s using .env and host env. See ADR-0003.
 func (e *Engine) resolveEnvVars(s string) string {
 	return resolveShellExpr(s, e.Env)
 }
@@ -58,9 +56,7 @@ func parseHostPortProto(p string) (string, string) {
 	}
 }
 
-// portRangeWarnThreshold is the maximum number of ports in a mapped range before
-// halo emits a CheckWarning. Large ranges significantly increase check time and
-// may exhaust the 2-second check group timeout.
+// portRangeWarnThreshold is the max ports in a range before warning. See ADR-0006.
 const portRangeWarnThreshold = 64
 
 func checkSinglePortCollision(hostPort string, proto string) bool {
@@ -132,7 +128,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	}
 	projectName = strings.ToLower(projectName)
 
-	// Fetch containers first to check if a port is bound by our own active container
+	// Fetch active containers to check if port is self-bound.
 	var containers client.ContainerListResult
 	var listErr error
 	hasContainers := false
@@ -143,11 +139,11 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 		}
 	}
 
-	// 1. Port Collision Check
+	// 1. Port collision check
 	servicesWithCollisions := make(map[string]bool)
 	portCollisionPassed := true
 
-	// Sort service names for deterministic checks
+	// Sort services for deterministic checks.
 	var svcNames []string
 	for name := range e.Compose.Services {
 		svcNames = append(svcNames, name)
@@ -176,7 +172,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 				continue
 			}
 
-			// Parse range into individual ports
+			// Parse port range.
 			var ports []int
 			parts := strings.Split(hostPortRange, "-")
 			if len(parts) == 1 {
@@ -197,8 +193,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 				}
 			}
 
-			// Warn when a port range is unusually large — scanning every port is
-			// slow and risks exhausting the 2-second check group timeout.
+			// Warn on large ranges to prevent timeout. See ADR-0004.
 			if len(ports) > portRangeWarnThreshold {
 				results = append(results, output.CheckResult{
 					Group:      "Network & Port Availability",
@@ -244,7 +239,8 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 		})
 	}
 
-	// 2. Service Reachability Check
+	// 2. Service reachability check
+	// Warn and skip reachability checks when Docker daemon is unreachable. See ADR-0006.
 	if e.DockerCli == nil {
 		results = append(results, output.CheckResult{
 			Group:      "Network & Port Availability",
@@ -490,7 +486,7 @@ var getOccupyingProcessFunc = func(port string, proto string) (string, int, erro
 	return "", 0, fmt.Errorf("no occupying process found")
 }
 
-// GetOccupyingProcess is an exported wrapper around getOccupyingProcessFunc
+// GetOccupyingProcess wraps getOccupyingProcessFunc.
 func GetOccupyingProcess(port string, proto string) (string, int, error) {
 	return getOccupyingProcessFunc(port, proto)
 }

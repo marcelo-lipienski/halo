@@ -13,7 +13,7 @@ import (
 	"github.com/marcelo-lipienski/halo/output"
 )
 
-// CheckGitignoreSecurity audits local environment files to ensure they are git-ignored and not tracked.
+// CheckGitignoreSecurity audits env files to ensure they are git-ignored and not tracked.
 func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResult {
 	var results []output.CheckResult
 
@@ -70,7 +70,7 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 			relPath = path
 		}
 
-		// 1. Check if tracked (committed)
+		// 1. Check if tracked.
 		tracked := false
 		if gitAvailable {
 			cmd := exec.CommandContext(ctx, "git", "ls-files", "--error-unmatch", path)
@@ -91,7 +91,7 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 			continue
 		}
 
-		// 2. Check if ignored
+		// 2. Check if ignored.
 		ignored := false
 		if gitAvailable {
 			cmd := exec.CommandContext(ctx, "git", "check-ignore", "-q", path)
@@ -100,7 +100,7 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 				ignored = true
 			}
 		} else {
-			// Fallback custom ignore parser
+			// Fallback custom ignore parser.
 			ignored, _ = isIgnoredCustom(path, e.ConfigDir)
 		}
 
@@ -168,14 +168,14 @@ func isIgnoredCustom(filePath string, configDir string) (bool, error) {
 		return false, err
 	}
 
-	// Traverse directories from filePath directory up to configDir
+	// Traverse directories upwards to configDir.
 	currentDir := filepath.Dir(absFile)
 	var gitignores []string
 
 	for {
 		ignoreFile := filepath.Join(currentDir, ".gitignore")
 		if stat, err := os.Stat(ignoreFile); err == nil && !stat.IsDir() {
-			gitignores = append([]string{ignoreFile}, gitignores...) // Prepend so parents are processed first
+			gitignores = append([]string{ignoreFile}, gitignores...) // Prepend parents first.
 		}
 		if currentDir == absConfig || currentDir == filepath.Dir(currentDir) {
 			break
@@ -204,7 +204,6 @@ func isIgnoredCustom(filePath string, configDir string) (bool, error) {
 			line := scanner.Text()
 			matches, err := matchGitignorePattern(line, relPath)
 			if err == nil && matches {
-				// Negation overrides ignore
 				if strings.HasPrefix(strings.TrimSpace(line), "!") {
 					ignored = false
 				} else {
@@ -226,7 +225,7 @@ func matchGitignorePattern(pattern string, relPath string) (bool, error) {
 
 	pattern = strings.TrimPrefix(pattern, "!")
 
-	// Anchored patterns contain a slash (not at the end) or start with a slash
+	// Check if pattern is anchored.
 	anchored := false
 	if strings.HasPrefix(pattern, "/") {
 		anchored = true

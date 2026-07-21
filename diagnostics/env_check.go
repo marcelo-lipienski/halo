@@ -20,7 +20,7 @@ type svcEnvRef struct {
 func (e *Engine) extractReferencedEnvVars() []svcEnvRef {
 	var refs []svcEnvRef
 
-	// Sort service names for deterministic environment extraction.
+	// Sort service names.
 	var svcNames []string
 	for name := range e.Compose.Services {
 		svcNames = append(svcNames, name)
@@ -93,7 +93,7 @@ func (e *Engine) loadServiceEnvFiles(svc config.ComposeService) map[string]strin
 		}
 		path = filepath.Clean(path)
 
-		// Read and parse env file
+		// Read and parse env file.
 		if vars, err := config.ParseEnv(path); err == nil {
 			for k, v := range vars {
 				svcEnv[k] = v
@@ -136,7 +136,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 		default:
 		}
 
-		// Check system environment variable first (takes precedence over .env).
+		// System env takes precedence over .env.
 		val, exists := os.LookupEnv(ref.ref.name)
 		if !exists {
 			val, exists = e.Env[ref.ref.name]
@@ -148,7 +148,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 		}
 
 		if !exists {
-			// Variables with ${VAR:-default} have a fallback and are not required.
+			// Skip if fallback exists. See ADR-0003.
 			if ref.ref.hasDefault {
 				continue
 			}
@@ -162,7 +162,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 			})
 		} else if val == "" {
 			if ref.ref.required {
-				// ${VAR:?error} — variable must be set AND non-empty.
+				// Required non-empty variable check. See ADR-0003.
 				variablesCheckPassed = false
 				results = append(results, output.CheckResult{
 					Group:      "Environmental Alignment",
@@ -172,7 +172,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 					Mitigation: fmt.Sprintf("Set a non-empty value for %s in your .env file or host environment", ref.ref.name),
 				})
 			} else if !ref.ref.hasDefault {
-				// Defined but empty and no inline default — warn, not fatal.
+				// Warn on empty variable without default. See ADR-0003.
 				mismatchedTypesPassed = false
 				results = append(results, output.CheckResult{
 					Group:      "Environmental Alignment",
@@ -185,20 +185,20 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 		}
 	}
 
-	// .env.example Schema Validation Check
+	// .env.example schema validation check
 	schemaCheckPassed := true
 	hasSchemaFile := false
 
 	examplePath := filepath.Join(e.ConfigDir, ".env.example")
 	if _, err := os.Stat(examplePath); err != nil {
-		// Fallback to directory of compose path
+		// Fallback to compose directory.
 		examplePath = filepath.Join(filepath.Dir(e.ComposePath), ".env.example")
 	}
 
 	if _, err := os.Stat(examplePath); err == nil {
 		hasSchemaFile = true
 		if exampleEnv, parseErr := config.ParseEnv(examplePath); parseErr == nil {
-			// Sort keys for deterministic output
+			// Sort keys.
 			var keys []string
 			for k := range exampleEnv {
 				keys = append(keys, k)
@@ -225,7 +225,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 				default:
 				}
 
-				// Check if key is defined
+				// Check if key is defined.
 				var val string
 				var exists bool
 				if v, ok := os.LookupEnv(key); ok {
@@ -235,7 +235,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 					val = v
 					exists = true
 				} else {
-					// Check in any service env_file
+					// Check in service env_file.
 					for _, svc := range e.Compose.Services {
 						svcEnv := e.loadServiceEnvFiles(svc)
 						if v, ok := svcEnv[key]; ok {
@@ -295,8 +295,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 	if envPath == "" {
 		envPath = filepath.Join(e.ConfigDir, ".env")
 	}
-	// Only run drift check when .env exists on disk — the engine may operate with
-	// an in-memory env map that has no corresponding file (e.g. in tests or CI).
+	// Only run drift check if .env file exists on disk.
 	if _, statErr := os.Stat(envPath); statErr == nil {
 		examplePath2 := filepath.Join(filepath.Dir(envPath), ".env.example")
 		driftResults, _ := CheckEnvExampleDrift(envPath, examplePath2)
@@ -309,7 +308,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 	return results
 }
 
-// CheckEnvExampleDrift compares .env against .env.example
+// CheckEnvExampleDrift compares .env against .env.example.
 func CheckEnvExampleDrift(envPath, examplePath string) ([]output.CheckResult, error) {
 	var results []output.CheckResult
 

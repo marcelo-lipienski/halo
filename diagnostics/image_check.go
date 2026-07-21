@@ -11,7 +11,7 @@ import (
 	"github.com/marcelo-lipienski/halo/output"
 )
 
-// isMutableTag helper evaluates if an image string uses a mutable tag.
+// isMutableTag checks if image tag is mutable.
 func isMutableTag(image string) (bool, string, string) {
 	if strings.Contains(image, "@sha256:") {
 		return false, "", ""
@@ -45,8 +45,7 @@ func isMutableTag(image string) (bool, string, string) {
 	return false, tag, ""
 }
 
-// CheckImageTags audits the images defined in compose services for mutable/unlocked tags,
-// including base images defined in referenced Dockerfiles.
+// CheckImageTags audits service and Dockerfile images for mutable tags.
 func (e *Engine) CheckImageTags() []output.CheckResult {
 	var results []output.CheckResult
 	if e.Compose == nil || len(e.Compose.Services) == 0 {
@@ -62,7 +61,7 @@ func (e *Engine) CheckImageTags() []output.CheckResult {
 	for _, name := range svcNames {
 		svc := e.Compose.Services[name]
 
-		// 1. Audit compose-level image tag if present
+		// 1. Audit compose-level image tag.
 		if svc.Image != "" {
 			image := svc.Image
 			isMutable, tag, _ := isMutableTag(image)
@@ -90,7 +89,7 @@ func (e *Engine) CheckImageTags() []output.CheckResult {
 			}
 		}
 
-		// 2. Audit Dockerfile base images if build block is present
+		// 2. Audit Dockerfile base images.
 		if svc.Build.Context != "" {
 			dfResults := e.checkDockerfile(name, svc.Build)
 			results = append(results, dfResults...)
@@ -113,7 +112,7 @@ func (e *Engine) checkDockerfile(serviceName string, build config.ComposeBuild) 
 
 	data, err := os.ReadFile(dockerfilePath)
 	if err != nil {
-		// Skip check if the Dockerfile is missing (could be built dynamically or out of repo context)
+		// Skip if Dockerfile is missing.
 		return nil
 	}
 
@@ -147,7 +146,7 @@ func (e *Engine) checkDockerfile(serviceName string, build config.ComposeBuild) 
 			continue
 		}
 
-		// Track stage aliases for multi-stage builds (e.g. FROM image AS stage_name)
+		// Track multi-stage stage aliases.
 		for i := imageIdx + 1; i < len(words); i++ {
 			if strings.ToUpper(words[i]) == "AS" && i+1 < len(words) {
 				alias := strings.ToLower(words[i+1])

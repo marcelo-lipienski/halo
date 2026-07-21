@@ -50,7 +50,7 @@ func isReadable(path string) (bool, error) {
 	}
 
 	if info.IsDir() {
-		// Attempt to read the directory names (at least 1)
+		// Read directory contents.
 		f, err := os.Open(path)
 		if err != nil {
 			return false, err
@@ -63,7 +63,7 @@ func isReadable(path string) (bool, error) {
 		return true, nil
 	}
 
-	// For files, attempt to open for reading
+	// Open file for reading.
 	f, err := os.Open(path)
 	if err != nil {
 		return false, err
@@ -79,7 +79,7 @@ func isWritable(path string) (bool, error) {
 	}
 
 	if info.IsDir() {
-		// Attempt to create a temp file inside the directory
+		// Create temporary file.
 		tempFile, err := os.CreateTemp(path, ".halo_write_test_*")
 		if err != nil {
 			return false, err
@@ -89,7 +89,7 @@ func isWritable(path string) (bool, error) {
 		return true, nil
 	}
 
-	// For files, attempt to open with write permission
+	// Open file for writing.
 	f, err := os.OpenFile(path, os.O_WRONLY, 0666)
 	if err != nil {
 		return false, err
@@ -98,8 +98,7 @@ func isWritable(path string) (bool, error) {
 	return true, nil
 }
 
-// checkReadPermission verifies read access on hostPath and optionally auto-fixes it.
-// It appends result entries to results and returns the updated slice.
+// checkReadPermission verifies read access and optionally auto-fixes it. See ADR-0005.
 func (e *Engine) checkReadPermission(results []output.CheckResult, hostPath, volSource, svcName string, info os.FileInfo) ([]output.CheckResult, bool) {
 	readable, rErr := isReadable(hostPath)
 	if readable && rErr == nil {
@@ -144,8 +143,7 @@ func (e *Engine) checkReadPermission(results []output.CheckResult, hostPath, vol
 			newMode = 0644
 		}
 		if chmodErr := fixPermissions(hostPath, newMode); chmodErr == nil {
-			// Re-verify after chmod — chmod may succeed but the path could still be
-			// unreadable if the current user does not own it (e.g. root-owned volume).
+			// Re-verify readability. See ADR-0005.
 			if r, reVerifyErr := isReadable(hostPath); r && reVerifyErr == nil {
 				results = append(results, output.CheckResult{
 					Group:  "Volume & File Permissions",
@@ -155,8 +153,7 @@ func (e *Engine) checkReadPermission(results []output.CheckResult, hostPath, vol
 				})
 				return results, true
 			} else {
-				// chmod syscall succeeded but readability still fails — update rErr
-				// to reflect the current state rather than the pre-chmod error.
+				// Update error if readability still fails. See ADR-0005.
 				rErr = reVerifyErr
 			}
 		}
@@ -176,8 +173,7 @@ func (e *Engine) checkReadPermission(results []output.CheckResult, hostPath, vol
 	return results, false
 }
 
-// checkWritePermission verifies write access on hostPath and optionally auto-fixes it.
-// It appends result entries to results and returns the updated slice.
+// checkWritePermission verifies write access and optionally auto-fixes it. See ADR-0005.
 func (e *Engine) checkWritePermission(results []output.CheckResult, hostPath, volSource, svcName string, info os.FileInfo) []output.CheckResult {
 	writable, wErr := isWritable(hostPath)
 	if writable && wErr == nil {
@@ -257,7 +253,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 
 	volumeCheckPassed := true
 
-	// 1. Volumes Check
+	// 1. Volumes check
 	var svcNames []string
 	for name := range e.Compose.Services {
 		svcNames = append(svcNames, name)
@@ -284,7 +280,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				continue
 			}
 
-			// Cross-platform OS path conventions warning
+			// Cross-platform path convention check.
 			isWindowsPath := false
 			if len(vol.Source) >= 2 {
 				drive := vol.Source[0]
@@ -332,7 +328,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				hostPath = filepath.Join(baseDir, hostPath)
 			}
 
-			// Clean path
+			// Clean path.
 			hostPath = filepath.Clean(hostPath)
 
 			info, err := os.Stat(hostPath)
@@ -434,14 +430,13 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				before := len(results)
 				results = e.checkWritePermission(results, hostPath, vol.Source, svcName, info)
 				if len(results) > before {
-					// A failure was appended
 					volumeCheckPassed = false
 				}
 			}
 		}
 	}
 
-	// 2. Secrets Check
+	// 2. Secrets check
 	var secNames []string
 	for name := range e.Compose.Secrets {
 		secNames = append(secNames, name)
@@ -538,7 +533,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 			continue
 		}
 
-		// Verify read permission
+		// Verify read permission.
 		f, err := os.Open(secretPath)
 		if err != nil {
 			if e.DryRun {
@@ -582,7 +577,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 		}
 	}
 
-	// 3. Configs Check
+	// 3. Configs check
 	var cfgNames []string
 	for name := range e.Compose.Configs {
 		cfgNames = append(cfgNames, name)
@@ -679,7 +674,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 			continue
 		}
 
-		// Verify read permission
+		// Verify read permission.
 		f, err := os.Open(cfgPath)
 		if err != nil {
 			if e.DryRun {
@@ -723,7 +718,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 		}
 	}
 
-	// 4. EnvFiles Check
+	// 4. EnvFiles check
 	for _, svcName := range svcNames {
 		svc := e.Compose.Services[svcName]
 		for _, ef := range svc.EnvFiles {
@@ -758,7 +753,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 			_, err := os.Stat(envFilePath)
 			if os.IsNotExist(err) {
 				if !ef.Required {
-					// Optional env file is missing — warn, not fatal
+					// Warn on missing optional env file.
 					results = append(results, output.CheckResult{
 						Group:      "Volume & File Permissions",
 						Name:       fmt.Sprintf("Optional env file missing: %s", ef.File),
@@ -821,7 +816,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				continue
 			}
 
-			// Verify read permission
+			// Verify read permission.
 			f, err := os.Open(envFilePath)
 			if err != nil {
 				if e.DryRun {
@@ -866,11 +861,10 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 		}
 	}
 
-	// 5. Service Secrets & Configs Mapping Check
+	// 5. Service secrets and configs mapping check
 	for _, svcName := range svcNames {
 		svc := e.Compose.Services[svcName]
 
-		// Validate Secrets
 		for _, s := range svc.Secrets {
 			if _, exists := e.Compose.Secrets[s.Source]; !exists {
 				volumeCheckPassed = false
@@ -884,7 +878,6 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 			}
 		}
 
-		// Validate Configs
 		for _, c := range svc.Configs {
 			if _, exists := e.Compose.Configs[c.Source]; !exists {
 				volumeCheckPassed = false

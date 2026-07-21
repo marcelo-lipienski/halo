@@ -6,7 +6,7 @@ import (
 	"syscall"
 )
 
-// GetFreeDiskSpace returns the free disk space in bytes in the directory specified by path
+// GetFreeDiskSpace returns free disk space in bytes.
 func GetFreeDiskSpace(path string) (uint64, error) {
 	var stat syscall.Statfs_t
 	err := syscall.Statfs(path, &stat)

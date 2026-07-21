@@ -19,7 +19,7 @@ type memoryStatusEx struct {
 	ullAvailExtendedVirtual uint64
 }
 
-// GetHostMemory returns the total system memory in bytes on Windows using Win32 API
+// GetHostMemory returns total system memory in bytes.
 func GetHostMemory() (uint64, error) {
 	h := syscall.MustLoadDLL("kernel32.dll")
 	c := h.MustFindProc("GlobalMemoryStatusEx")

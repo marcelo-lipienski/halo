@@ -486,8 +486,7 @@ func ParseCompose(path string) (*ComposeConfig, error) {
 	return &config, nil
 }
 
-// MergeComposeConfigs merges multiple compose configurations from left to right.
-// Latter configurations override or append to earlier ones according to Docker Compose rules.
+// MergeComposeConfigs merges multiple configurations left-to-right. See ADR-0003.
 func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 	merged := &ComposeConfig{
 		Services: make(map[string]ComposeService),
@@ -501,34 +500,26 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 			continue
 		}
 
-		// Merge Services
 		for svcName, srcSvc := range config.Services {
 			destSvc, exists := merged.Services[svcName]
 			if !exists {
-				// Simply insert
 				merged.Services[svcName] = srcSvc
 				continue
 			}
 
-			// Merge service fields
-			// Image: latter overrides former if not empty
 			if srcSvc.Image != "" {
 				destSvc.Image = srcSvc.Image
 			}
-			// ContainerName: latter overrides former if not empty
 			if srcSvc.ContainerName != "" {
 				destSvc.ContainerName = srcSvc.ContainerName
 			}
-			// Entrypoint: latter overrides former if defined
 			if len(srcSvc.Entrypoint) > 0 {
 				destSvc.Entrypoint = srcSvc.Entrypoint
 			}
-			// Command: latter overrides former if defined
 			if len(srcSvc.Command) > 0 {
 				destSvc.Command = srcSvc.Command
 			}
 
-			// Environment: merge keys, latter overrides former
 			if destSvc.Environment == nil {
 				destSvc.Environment = make(ComposeEnvironment)
 			}
@@ -536,13 +527,10 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 				destSvc.Environment[k] = v
 			}
 
-			// Ports: append lists
 			destSvc.Ports = append(destSvc.Ports, srcSvc.Ports...)
 
-			// EnvFiles: append list
 			destSvc.EnvFiles = append(destSvc.EnvFiles, srcSvc.EnvFiles...)
 
-			// Secrets: merge by Source, latter overrides former
 			if len(srcSvc.Secrets) > 0 {
 				secretMap := make(map[string]ComposeServiceSecret)
 				for _, s := range destSvc.Secrets {
@@ -561,7 +549,6 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 				destSvc.Secrets = mergedSecrets
 			}
 
-			// Configs: merge by Source, latter overrides former
 			if len(srcSvc.Configs) > 0 {
 				configMap := make(map[string]ComposeServiceConfig)
 				for _, c := range destSvc.Configs {
@@ -580,8 +567,6 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 				destSvc.Configs = mergedConfigs
 			}
 
-			// Volumes: latter overrides former if container target path is the same.
-			// Anonymous volumes (empty Target) are always appended without de-duplication.
 			srcTargets := make(map[string]bool)
 			for _, v := range srcSvc.Volumes {
 				if v.Target != "" {
@@ -606,17 +591,14 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 			merged.Services[svcName] = destSvc
 		}
 
-		// Merge root-level Volumes
 		for volName, volDef := range config.Volumes {
 			merged.Volumes[volName] = volDef
 		}
 
-		// Merge Secrets
 		for secName, secDef := range config.Secrets {
 			merged.Secrets[secName] = secDef
 		}
 
-		// Merge Configs
 		for cfgName, cfgDef := range config.Configs {
 			merged.Configs[cfgName] = cfgDef
 		}

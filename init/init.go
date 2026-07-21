@@ -38,7 +38,7 @@ func IsPlaceholder(value string) bool {
 	return false
 }
 
-// MergeEnvFiles merges keys from examplePath into targetPath.
+// MergeEnvFiles merges env keys from example to target. See ADR-0002.
 func MergeEnvFiles(examplePath, targetPath string, dryRun bool) (Result, error) {
 	var result Result
 
