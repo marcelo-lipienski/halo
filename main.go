@@ -74,8 +74,7 @@ func printVersion() {
 	if info, ok := debug.ReadBuildInfo(); ok {
 		if version == "dev" && info.Main.Version != "" && info.Main.Version != "(devel)" {
 			version = info.Main.Version
-			// If it's a Go pseudo-version (e.g. v0.2.3-0.20260719154649-fb27bb3b90df),
-			// extract the 12-character commit hash suffix.
+			// Extract commit suffix from Go pseudo-version.
 			parts := strings.Split(version, "-")
 			if len(parts) >= 3 && commit == "unknown" {
 				lastPart := parts[len(parts)-1]
@@ -142,7 +141,6 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 
-	// Define persistent flags
 	rootCmd.PersistentFlags().StringVarP(&configDir, "config-dir", "c", ".", "Path to the directory containing local configuration files")
 	rootCmd.PersistentFlags().StringVarP(&envFile, "env-file", "e", "", "Explicit path to the .env file")
 	rootCmd.PersistentFlags().StringArrayVar(&composeFiles, "compose-file", []string{}, "Explicit path(s) to the docker-compose.yml file (can specify multiple times)")
@@ -154,7 +152,6 @@ func newRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().BoolVarP(&interactive, "interactive", "i", false, "Confirm mitigation steps interactively before applying them")
 	rootCmd.PersistentFlags().BoolVarP(&watch, "watch", "w", false, "Watch configuration files for changes and automatically re-run checks")
 
-	// check subcommand
 	checkCmd := &cobra.Command{
 		Use:   "check",
 		Short: "Run the diagnostic suite",
@@ -167,7 +164,6 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 
-	// version subcommand
 	versionCmd := &cobra.Command{
 		Use:   "version",
 		Short: "Show version information",
@@ -176,7 +172,6 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 
-	// init subcommand
 	initCmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize or update .env from .env.example",
@@ -185,7 +180,6 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 
-	// doctor subcommand
 	doctorCmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Inspect host system-level prerequisites",
@@ -194,7 +188,6 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 
-	// snapshot subcommand
 	snapshotCmd := &cobra.Command{
 		Use:   "snapshot [file]",
 		Short: "Capture a state snapshot of the local environment",
@@ -203,7 +196,6 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 
-	// diff subcommand
 	diffCmd := &cobra.Command{
 		Use:   "diff [file]",
 		Short: "Compare current environment state against a snapshot",
@@ -243,13 +235,12 @@ func executeCheck() int {
 		envPath = filepath.Join(configDir, ".env")
 	}
 
-	// Determine compose files to load
+	// Determine compose files to load.
 	var filesToLoad []string
 	if len(composeFiles) > 0 {
 		filesToLoad = composeFiles
 	} else {
-		// Automatic detection: prefer docker-compose.yml, fall back to docker-compose.yaml
-		// (matches Docker Compose's own precedence behaviour)
+		// Auto-detect compose file. See ADR-0003.
 		composePathYml := filepath.Join(configDir, "docker-compose.yml")
 		composePathYaml := filepath.Join(configDir, "docker-compose.yaml")
 		composePath := composePathYaml
@@ -258,7 +249,7 @@ func executeCheck() int {
 		}
 		filesToLoad = append(filesToLoad, composePath)
 
-		// Check for automatic override file: docker-compose.override.yml or docker-compose.override.yaml
+		// Check for override compose file. See ADR-0003.
 		overridePathYml := filepath.Join(configDir, "docker-compose.override.yml")
 		overridePathYaml := filepath.Join(configDir, "docker-compose.override.yaml")
 		if _, err := os.Stat(overridePathYml); err == nil {
@@ -268,7 +259,7 @@ func executeCheck() int {
 		}
 	}
 
-	// Stat check for all configuration files
+	// Stat config files.
 	var missing []string
 	var accessErrors []string
 
@@ -332,7 +323,7 @@ func executeCheck() int {
 		return 1
 	}
 
-	// Merge all parsed configs according to docker-compose overrides rules
+	// Merge compose configs. See ADR-0003.
 	mergedComp := config.MergeComposeConfigs(parsedConfigs...)
 
 	var dockerCli client.APIClient
@@ -438,7 +429,7 @@ func getWatchFiles() []string {
 		files = append(files, examplePath)
 	}
 
-	// Dynamic detection of service-level env_files
+	// Detect service env_files dynamically. See ADR-0003.
 	for _, file := range filesToLoad {
 		if comp, err := config.ParseCompose(file); err == nil {
 			for _, svc := range comp.Services {
@@ -464,7 +455,7 @@ func getWatchFiles() []string {
 		}
 	}
 
-	// De-duplicate files using absolute paths
+	// De-duplicate file paths.
 	uniqueFiles := make(map[string]bool)
 	var deduped []string
 	for _, f := range files {
@@ -488,7 +479,6 @@ func getWatchFiles() []string {
 func runWatch(ctx context.Context) {
 	files := getWatchFiles()
 
-	// Initial run
 	_ = executeCheck()
 
 	lastMods := make(map[string]time.Time)
@@ -513,7 +503,7 @@ func runWatch(ctx context.Context) {
 			changed := false
 			files = getWatchFiles()
 
-			// 1. Detect deleted files from lastMods
+			// 1. Detect deleted files.
 			currentFiles := make(map[string]bool)
 			for _, f := range files {
 				currentFiles[f] = true
@@ -525,7 +515,7 @@ func runWatch(ctx context.Context) {
 				}
 			}
 
-			// 2. Detect modified or new files
+			// 2. Detect modified or new files.
 			for _, f := range files {
 				stat, err := os.Stat(f)
 				var modTime time.Time

@@ -9,21 +9,14 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// shellEnvRef describes a shell parameter reference found in a string expression.
+// shellEnvRef describes a shell parameter reference.
 type shellEnvRef struct {
-	// name is the variable name (e.g. "DB_PASSWORD" in ${DB_PASSWORD:-secret}).
-	name string
-	// hasDefault is true when the expansion carries a fallback value
-	// (${VAR:-default} or ${VAR-default}) so a missing or empty variable is
-	// not necessarily fatal.
-	hasDefault bool
-	// required is true when the expansion uses the :? operator
-	// (${VAR:?error}) meaning the variable must be set and non-empty.
-	required bool
+	name       string // Variable name.
+	hasDefault bool   // True if expansion has default fallback.
+	required   bool   // True if expansion is required.
 }
 
-// parseShellWord parses a single shell-word string into a *syntax.Word.
-// Returns nil if the string contains no parseable words.
+// parseShellWord parses shell-word to AST. Returns nil if empty.
 func parseShellWord(s string) *syntax.Word {
 	p := syntax.NewParser()
 	for w, _ := range p.WordsSeq(strings.NewReader(s)) {
@@ -32,9 +25,7 @@ func parseShellWord(s string) *syntax.Word {
 	return nil
 }
 
-// extractShellEnvRefs parses a shell word string and returns all parameter
-// expansion references found inside it. It recognises ${VAR}, $VAR,
-// ${VAR:-default}, and ${VAR:?error} forms using mvdan.cc/sh/v3/syntax.
+// extractShellEnvRefs parses parameter references from s. See ADR-0003.
 func extractShellEnvRefs(s string) []shellEnvRef {
 	word := parseShellWord(s)
 	if word == nil {
@@ -54,7 +45,7 @@ func extractShellEnvRefs(s string) []shellEnvRef {
 			return true
 		}
 
-		// Skip special shell parameters ($0, $#, $?, etc.)
+		// Skip special parameters.
 		if len(name) == 1 && !isAlphaNum(name[0]) {
 			return true
 		}
@@ -65,10 +56,8 @@ func extractShellEnvRefs(s string) []shellEnvRef {
 		if pe.Exp != nil {
 			switch pe.Exp.Op {
 			case syntax.DefaultUnset, syntax.DefaultUnsetOrNull:
-				// ${VAR-default} or ${VAR:-default}: has a fallback
 				ref.hasDefault = true
 			case syntax.ErrorUnset, syntax.ErrorUnsetOrNull:
-				// ${VAR?error} or ${VAR:?error}: required, no default
 				ref.required = true
 			}
 		}
@@ -83,14 +72,7 @@ func isAlphaNum(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
 }
 
-// resolveShellExpr expands shell parameter expressions in s using the provided
-// env map and the host OS environment. It supports ${VAR}, $VAR, ${VAR:-default},
-// and ${VAR:?error} via mvdan.cc/sh/v3/expand. On any parse or expansion error
-// the original string s is returned unchanged.
-//
-// Note: expand.FuncEnviron treats empty-string returns as "unset", which means
-// ${VAR:-default} correctly falls back when VAR is empty — matching the shell
-// :- (unset-or-empty) semantics.
+// resolveShellExpr expands parameter expressions in s using env and host env. See ADR-0003.
 func resolveShellExpr(s string, env map[string]string) string {
 	if !strings.Contains(s, "$") {
 		return s
@@ -103,9 +85,7 @@ func resolveShellExpr(s string, env map[string]string) string {
 
 	cfg := &expand.Config{
 		Env: expand.FuncEnviron(func(name string) string {
-			// System environment takes precedence over the .env map.
-			// expand.FuncEnviron treats "" as "unset", so variables defined
-			// but empty in os.Environ will correctly trigger :- fallbacks.
+			// System env takes precedence over .env map. See ADR-0003.
 			if v, ok := os.LookupEnv(name); ok {
 				return v
 			}
@@ -115,8 +95,7 @@ func resolveShellExpr(s string, env map[string]string) string {
 
 	result, err := expand.Literal(cfg, word)
 	if err != nil {
-		// ${VAR:?message} with an unset/empty var raises UnsetParameterError —
-		// return empty string so callers treat it as unresolved.
+		// Return empty string on unset/empty required variable. See ADR-0003.
 		var unsetErr expand.UnsetParameterError
 		if errors.As(err, &unsetErr) {
 			return ""
@@ -127,7 +106,7 @@ func resolveShellExpr(s string, env map[string]string) string {
 	return result
 }
 
-// ResolveShellExpr is an exported wrapper around resolveShellExpr
+// ResolveShellExpr wraps resolveShellExpr.
 func ResolveShellExpr(s string, env map[string]string) string {
 	return resolveShellExpr(s, env)
 }

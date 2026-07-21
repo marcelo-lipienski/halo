@@ -59,13 +59,13 @@ type EnvironmentDiff struct {
 	Containers []ContainerDiff `json:"containers,omitempty"`
 }
 
-// Diff compares old and new snapshots
+// Diff compares old and new snapshots.
 func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
 	diff := &EnvironmentDiff{
 		Project: new.Project,
 	}
 
-	// 1. Diff Files
+	// 1. Files
 	allFiles := make(map[string]bool)
 	for k := range old.Files {
 		allFiles[k] = true
@@ -112,7 +112,7 @@ func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
 		}
 	}
 
-	// 2. Diff Variables
+	// 2. Variables
 	allVarFiles := make(map[string]bool)
 	for k := range old.Variables {
 		allVarFiles[k] = true
@@ -177,7 +177,7 @@ func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
 		}
 	}
 
-	// 3. Diff Ports
+	// 3. Ports
 	type portKey struct {
 		service  string
 		port     string
@@ -206,7 +206,7 @@ func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
 	for k := range allPortKeys {
 		sortedPortKeys = append(sortedPortKeys, k)
 	}
-	// Sort ports deterministically by service, then port, then protocol
+	// Sort ports deterministically.
 	sort.Slice(sortedPortKeys, func(i, j int) bool {
 		if sortedPortKeys[i].service != sortedPortKeys[j].service {
 			return sortedPortKeys[i].service < sortedPortKeys[j].service
@@ -259,7 +259,7 @@ func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
 		}
 	}
 
-	// 4. Diff Services & Containers
+	// 4. Services and containers
 	allServices := make(map[string]bool)
 	for k := range old.Services {
 		allServices[k] = true
@@ -330,7 +330,7 @@ func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
 	return diff
 }
 
-// Helper to determine if color output is enabled
+// useColor returns true if color is enabled.
 func useColor(w io.Writer) bool {
 	if os.Getenv("NO_COLOR") != "" {
 		return false
@@ -353,7 +353,7 @@ func colorize(s, ansi string, color bool) string {
 	return "\033[" + ansi + "m" + s + "\033[0m"
 }
 
-// RenderText writes the diff report in human-readable text format
+// RenderText writes the diff report in human-readable text format.
 func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 	color := useColor(w)
 
@@ -367,7 +367,7 @@ func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 		return
 	}
 
-	// 1. Files Diff
+	// 1. Files
 	if len(diff.Files) > 0 {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "[Configuration Files]")
@@ -383,12 +383,11 @@ func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 		}
 	}
 
-	// 2. Variables Diff
+	// 2. Variables
 	if len(diff.Variables) > 0 {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "[Environment Variables]")
 		
-		// Group by file
 		byFile := make(map[string][]VarDiff)
 		for _, v := range diff.Variables {
 			byFile[v.File] = append(byFile[v.File], v)
@@ -415,7 +414,7 @@ func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 		}
 	}
 
-	// 3. Services / Containers Diff
+	// 3. Services and containers
 	if len(diff.Containers) > 0 {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "[Services & Containers]")
@@ -449,7 +448,7 @@ func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 		}
 	}
 
-	// 4. Ports Diff
+	// 4. Ports
 	if len(diff.Ports) > 0 {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "[Ports]")

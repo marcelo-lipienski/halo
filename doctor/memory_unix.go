@@ -10,9 +10,9 @@ import (
 	"strings"
 )
 
-// GetHostMemory returns the total system memory in bytes on Unix systems
+// GetHostMemory returns total system memory in bytes.
 func GetHostMemory() (uint64, error) {
-	// Try Linux /proc/meminfo first
+	// Parse /proc/meminfo on Linux.
 	if data, err := os.ReadFile("/proc/meminfo"); err == nil {
 		lines := strings.Split(string(data), "\n")
 		for _, line := range lines {
@@ -27,7 +27,7 @@ func GetHostMemory() (uint64, error) {
 			}
 		}
 	}
-	// Try macOS sysctl
+	// Query sysctl on macOS.
 	if cmd := exec.Command("sysctl", "-n", "hw.memsize"); cmd != nil {
 		if out, err := cmd.Output(); err == nil {
 			valStr := strings.TrimSpace(string(out))

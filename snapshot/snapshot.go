@@ -54,7 +54,7 @@ type EnvironmentSnapshot struct {
 	Services  map[string]ContainerSnapshot         `json:"services"`  // service name -> container info
 }
 
-// Helper to compute SHA256 hash of a file
+// computeSHA256 returns hex SHA256 of file.
 func computeSHA256(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -68,7 +68,7 @@ func computeSHA256(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// Parse host port and protocol from string
+// parseHostPortProto parses host port and protocol.
 func parseHostPortProto(p string) (string, string) {
 	proto := "tcp"
 	if strings.HasSuffix(p, "/udp") {
@@ -101,7 +101,7 @@ func parseHostPortProto(p string) (string, string) {
 	}
 }
 
-// Check if a single port is occupied on host
+// checkSinglePortCollision checks if host port is occupied.
 func checkSinglePortCollision(hostPort string, proto string) bool {
 	if proto == "udp" {
 		l, err := net.ListenPacket("udp", "127.0.0.1:"+hostPort)
@@ -131,23 +131,21 @@ func checkSinglePortCollision(hostPort string, proto string) bool {
 	return false
 }
 
-// CreateSnapshot captures the state of the local environment
+// CreateSnapshot captures local environment state. See ADR-0002.
 func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*EnvironmentSnapshot, []string, error) {
 	var warnings []string
 
-	// Resolve envPath
 	if envPath == "" {
 		envPath = filepath.Join(configDir, ".env")
 	}
 
-	// Parse main env file to get variables
+	// Parse env variables.
 	envMap, envErr := config.ParseEnv(envPath)
 	if envErr != nil {
-		// It's not fatal if .env doesn't exist yet, we will snapshot whatever exists
+		// Continue with empty map if .env is missing.
 		envMap = make(map[string]string)
 	}
 
-	// Resolve compose files
 	var filesToLoad []string
 	if len(composeFiles) > 0 {
 		filesToLoad = composeFiles
@@ -169,7 +167,7 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 		}
 	}
 
-	// Project name determination
+	// Determine project name.
 	projectName := ""
 	if envProj := os.Getenv("COMPOSE_PROJECT_NAME"); envProj != "" {
 		projectName = envProj
@@ -181,7 +179,7 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 	}
 	projectName = strings.ToLower(projectName)
 
-	// Collect file paths to snapshot
+	// Collect file paths.
 	trackedFiles := make(map[string]bool)
 	addFile := func(p string) {
 		if p == "" {
@@ -205,7 +203,7 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 		addFile(f)
 	}
 
-	// Parse compose configs to find service env_files
+	// Find service env_files.
 	var parsedConfigs []*config.ComposeConfig
 	for _, file := range filesToLoad {
 		if _, err := os.Stat(file); err == nil {
@@ -231,7 +229,7 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 		}
 	}
 
-	// 1. Create File snapshots
+	// 1. File snapshots
 	filesSnap := make(map[string]FileSnapshot)
 	varsSnap := make(map[string]map[string]string)
 
@@ -257,7 +255,7 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 			Hash:    hash,
 		}
 
-		// If it is an env file, load its variables
+		// Parse variables for env files.
 		if strings.HasSuffix(filepath.Base(p), ".env") || strings.Contains(filepath.Base(p), ".env.") || filepath.Base(p) == ".env" {
 			if vars, err := config.ParseEnv(p); err == nil {
 				varsSnap[relPath] = vars
@@ -265,7 +263,7 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 		}
 	}
 
-	// 2. Setup Docker client
+	// 2. Docker client setup
 	var dockerCli client.APIClient
 	var dockerErr error
 	dockerCli, dockerErr = client.New(client.FromEnv)
@@ -282,7 +280,7 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 		defer func() { _ = dockerCli.Close() }()
 	}
 
-	// 3. Port snapshots & Container snapshots
+	// 3. Port and container snapshots
 	var portsSnap []PortSnapshot
 	servicesSnap := make(map[string]ContainerSnapshot)
 

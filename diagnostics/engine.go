@@ -37,7 +37,7 @@ func NewEngine(configDir, composePath string, env map[string]string, compose *co
 	}
 }
 
-// Run executes the diagnostic check groups concurrently with appropriate timeouts
+// Run executes check groups concurrently. See ADR-0004.
 func (e *Engine) Run(ctx context.Context) *output.DiagnosticsReport {
 	start := time.Now()
 	var resultsA []output.CheckResult
@@ -88,7 +88,6 @@ func (e *Engine) Run(ctx context.Context) *output.DiagnosticsReport {
 	results = append(results, resultsC...)
 	results = append(results, resultsD...)
 
-	// Determine overall status
 	status := output.StatusHealthy
 	for _, res := range results {
 		if res.Status == output.CheckFailed {
@@ -123,14 +122,14 @@ func (e *Engine) getSensitiveValues() []string {
 			strings.Contains(k, "API")
 	}
 
-	// Scan project-level env
+	// Scan project-level env.
 	for k, v := range e.Env {
 		if isSensitiveKey(k) && v != "" && len(v) > 2 {
 			values = append(values, v)
 		}
 	}
 
-	// Scan host env
+	// Scan host env.
 	for _, env := range os.Environ() {
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) == 2 {
@@ -141,7 +140,7 @@ func (e *Engine) getSensitiveValues() []string {
 		}
 	}
 
-	// Scan service env files
+	// Scan service env files.
 	for _, svc := range e.Compose.Services {
 		svcEnv := e.loadServiceEnvFiles(svc)
 		for k, v := range svcEnv {
@@ -160,8 +159,7 @@ func (e *Engine) redactReport(report *output.DiagnosticsReport) {
 		return
 	}
 
-	// Sort sensitive values by length descending so that if one secret is a substring of another,
-	// the longer one gets replaced first.
+	// Sort sensitive values by length descending to redact longer secrets first.
 	sort.Slice(sensitiveVals, func(i, j int) bool {
 		return len(sensitiveVals[i]) > len(sensitiveVals[j])
 	})

@@ -7,31 +7,31 @@ import (
 	"os"
 )
 
-// Status represents the overall execution status of the diagnostics tool
+// Status represents overall tool execution status.
 type Status string
 
 const (
-	// StatusHealthy indicates all configuration parsed and all checks passed
+	// StatusHealthy: config parsed and checks passed.
 	StatusHealthy Status = "healthy"
-	// StatusSystemFailure indicates configuration files are missing, docker is down, or command usage is incorrect
+	// StatusSystemFailure: missing config, docker down, or invalid usage. See ADR-0002.
 	StatusSystemFailure Status = "system_failure"
-	// StatusEnvironmentBroken indicates configuration parsed, but check(s) failed
+	// StatusEnvironmentBroken: config parsed, but check(s) failed. See ADR-0002.
 	StatusEnvironmentBroken Status = "environment_broken"
 )
 
-// CheckStatus represents individual check results
+// CheckStatus represents individual check status.
 type CheckStatus string
 
 const (
-	// CheckPassed indicates the check passed successfully
+	// CheckPassed: check passed.
 	CheckPassed CheckStatus = "passed"
-	// CheckFailed indicates the check failed
+	// CheckFailed: check failed.
 	CheckFailed CheckStatus = "failed"
-	// CheckWarning indicates the check found a non-critical issue
+	// CheckWarning: non-critical check issue.
 	CheckWarning CheckStatus = "warning"
 )
 
-// CheckResult contains metadata and output of a diagnostic check execution
+// CheckResult is a single check's outcome.
 type CheckResult struct {
 	Group      string      `json:"group"`
 	Name       string      `json:"name"`
@@ -40,20 +40,20 @@ type CheckResult struct {
 	Mitigation string      `json:"mitigation,omitempty"`
 }
 
-// DiagnosticsReport aggregates check results and durations
+// DiagnosticsReport is the test run summary. See ADR-0002.
 type DiagnosticsReport struct {
 	Status     Status        `json:"status"`
 	DurationMs int64         `json:"duration_ms"`
 	Checks     []CheckResult `json:"checks"`
 }
 
-// RenderJSON formats the report to minified JSON and writes to target writer
+// RenderJSON writes minified JSON report. See ADR-0002.
 func RenderJSON(w io.Writer, report *DiagnosticsReport) error {
 	enc := json.NewEncoder(w)
 	return enc.Encode(report)
 }
 
-// isTTY returns true if the given writer is an os.File connected to a terminal.
+// isTTY checks if writer is a terminal.
 func isTTY(w io.Writer) bool {
 	f, ok := w.(*os.File)
 	if !ok {
@@ -66,9 +66,7 @@ func isTTY(w io.Writer) bool {
 	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
-// useColor returns true when ANSI colour output should be emitted.
-// It is suppressed when the NO_COLOR environment variable is set (any value)
-// or when the target writer is not a TTY.
+// useColor returns true if color is allowed.
 func useColor(w io.Writer) bool {
 	if os.Getenv("NO_COLOR") != "" {
 		return false
@@ -76,7 +74,7 @@ func useColor(w io.Writer) bool {
 	return isTTY(w)
 }
 
-// colorize wraps s in the given ANSI escape sequence when colour is enabled.
+// colorize wraps s in ANSI escape sequence.
 func colorize(s, ansi string, color bool) string {
 	if !color {
 		return s
@@ -84,9 +82,7 @@ func colorize(s, ansi string, color bool) string {
 	return "\033[" + ansi + "m" + s + "\033[0m"
 }
 
-// RenderText formats the report as ANSI text and writes to target writer.
-// ANSI colour sequences are suppressed when NO_COLOR is set or the writer is
-// not a terminal.
+// RenderText writes ANSI/plain report to writer. See ADR-0002.
 func RenderText(w io.Writer, report *DiagnosticsReport, verbose bool) {
 	color := useColor(w)
 
@@ -128,7 +124,6 @@ func RenderText(w io.Writer, report *DiagnosticsReport, verbose bool) {
 			}
 		default: // CheckFailed
 			fmt.Fprintf(w, "  %s %s\n", colorize("✗", "31", color), check.Name)
-			// Always show the error detail on failures — it's the actionable reason.
 			if check.Error != "" {
 				fmt.Fprintf(w, "    %s   %s\n", colorize("Error:", "90", color), check.Error)
 			}
@@ -140,7 +135,7 @@ func RenderText(w io.Writer, report *DiagnosticsReport, verbose bool) {
 
 	fmt.Fprintln(w)
 	if total > 0 {
-		// Warnings are non-fatal: they do not count as failures in the summary.
+		// Warnings do not count as failures.
 		failed := total - passed - warned
 		if failed == 0 {
 			fmt.Fprintln(w, colorize(fmt.Sprintf("%d of %d checks passed.", passed, total), "32", color))

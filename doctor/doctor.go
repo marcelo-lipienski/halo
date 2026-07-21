@@ -14,7 +14,7 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// ParseBytes converts strings like "50M", "2G", "1024K" to byte counts
+// ParseBytes parses size string to byte count.
 func ParseBytes(val string) (uint64, error) {
 	val = strings.TrimSpace(strings.ToLower(val))
 	if val == "" {
@@ -47,7 +47,7 @@ func ParseBytes(val string) (uint64, error) {
 	return num, nil
 }
 
-// FormatBytes formats byte counts to human-readable strings like "16.0 GB"
+// FormatBytes formats bytes to human-readable string.
 func FormatBytes(bytes uint64) string {
 	const unit = 1024
 	if bytes < unit {
@@ -61,12 +61,12 @@ func FormatBytes(bytes uint64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
-// RunDoctor performs system-level diagnostic checks on the host environment
+// RunDoctor runs system prerequisite and host resource checks. See ADR-0006.
 func RunDoctor(ctx context.Context, configDir string, compose *config.ComposeConfig) *output.DiagnosticsReport {
 	startTime := time.Now()
 	var checks []output.CheckResult
 
-	// 1. Docker CLI & Compose v2 Check
+	// 1. Docker CLI & Compose v2 check.
 	composeCheck := output.CheckResult{
 		Group: "System Prerequisites",
 		Name:  "Docker CLI & Compose v2",
@@ -80,7 +80,7 @@ func RunDoctor(ctx context.Context, configDir string, compose *config.ComposeCon
 		}
 		composeCheck.Name = fmt.Sprintf("Docker CLI & Compose v2 (%s)", versionStr)
 	} else {
-		// Fallback to legacy docker-compose v1 check
+		// Fallback to legacy Compose v1 check.
 		cmdLegacy := exec.CommandContext(ctx, "docker-compose", "version")
 		if outLegacy, errLegacy := cmdLegacy.Output(); errLegacy == nil {
 			composeCheck.Status = output.CheckWarning
@@ -99,7 +99,7 @@ func RunDoctor(ctx context.Context, configDir string, compose *config.ComposeCon
 	}
 	checks = append(checks, composeCheck)
 
-	// 2. Docker Engine Version Check
+	// 2. Docker Engine version check.
 	engineCheck := output.CheckResult{
 		Group: "System Prerequisites",
 		Name:  "Docker Engine Version",
@@ -125,7 +125,7 @@ func RunDoctor(ctx context.Context, configDir string, compose *config.ComposeCon
 	}
 	checks = append(checks, engineCheck)
 
-	// 3. Required CLI Tools Check
+	// 3. Required CLI tools check.
 	toolsCheck := output.CheckResult{
 		Group: "System Prerequisites",
 		Name:  "Required CLI Tools",
@@ -147,7 +147,7 @@ func RunDoctor(ctx context.Context, configDir string, compose *config.ComposeCon
 	}
 	checks = append(checks, toolsCheck)
 
-	// 4. System Memory Check
+	// 4. System memory check.
 	memCheck := output.CheckResult{
 		Group: "Host Resources",
 		Name:  "System Memory",
@@ -175,7 +175,7 @@ func RunDoctor(ctx context.Context, configDir string, compose *config.ComposeCon
 	}
 	checks = append(checks, memCheck)
 
-	// 5. Free Disk Space Check
+	// 5. Free disk space check.
 	diskCheck := output.CheckResult{
 		Group: "Host Resources",
 		Name:  "Free Disk Space",
@@ -186,7 +186,7 @@ func RunDoctor(ctx context.Context, configDir string, compose *config.ComposeCon
 	}
 	freeDisk, diskErr := GetFreeDiskSpace(absConfigDir)
 	if diskErr == nil {
-		minRecommend := uint64(2 * 1024 * 1024 * 1024) // 2 GB
+		minRecommend := uint64(2 * 1024 * 1024 * 1024)
 		if freeDisk < minRecommend {
 			diskCheck.Status = output.CheckWarning
 			diskCheck.Error = fmt.Sprintf("Free disk space (%s) is below recommended 2.0 GiB", FormatBytes(freeDisk))
@@ -202,7 +202,6 @@ func RunDoctor(ctx context.Context, configDir string, compose *config.ComposeCon
 	}
 	checks = append(checks, diskCheck)
 
-	// Determine overall status
 	reportStatus := output.StatusHealthy
 	for _, check := range checks {
 		if check.Status == output.CheckFailed {

@@ -7,7 +7,7 @@ import (
 	"unsafe"
 )
 
-// GetFreeDiskSpace returns the free disk space in bytes in the directory specified by path
+// GetFreeDiskSpace returns free disk space in bytes.
 func GetFreeDiskSpace(path string) (uint64, error) {
 	h := syscall.MustLoadDLL("kernel32.dll")
 	c := h.MustFindProc("GetDiskFreeSpaceExW")
