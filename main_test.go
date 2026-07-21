@@ -628,4 +628,3 @@ services:
 		t.Errorf("expected added variable in diff output, got: %q", stdoutStr)
 	}
 }
-

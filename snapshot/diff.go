@@ -73,7 +73,7 @@ func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
 	for k := range new.Files {
 		allFiles[k] = true
 	}
-	
+
 	var sortedFiles []string
 	for k := range allFiles {
 		sortedFiles = append(sortedFiles, k)
@@ -120,7 +120,7 @@ func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
 	for k := range new.Variables {
 		allVarFiles[k] = true
 	}
-	
+
 	var sortedVarFiles []string
 	for k := range allVarFiles {
 		sortedVarFiles = append(sortedVarFiles, k)
@@ -183,12 +183,12 @@ func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
 		port     string
 		protocol string
 	}
-	
+
 	oldPorts := make(map[portKey]PortSnapshot)
 	for _, p := range old.Ports {
 		oldPorts[portKey{service: p.Service, port: p.HostPort, protocol: p.Protocol}] = p
 	}
-	
+
 	newPorts := make(map[portKey]PortSnapshot)
 	for _, p := range new.Ports {
 		newPorts[portKey{service: p.Service, port: p.HostPort, protocol: p.Protocol}] = p
@@ -359,7 +359,7 @@ func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 
 	fmt.Fprintln(w, "=== halo Snapshot Diff ===")
 	fmt.Fprintf(w, "Comparing current state against snapshot taken at: %s\n", oldCreatedAt.Format(time.RFC3339))
-	
+
 	hasDiffs := len(diff.Files) > 0 || len(diff.Variables) > 0 || len(diff.Ports) > 0 || len(diff.Containers) > 0
 	if !hasDiffs {
 		fmt.Fprintln(w)
@@ -387,12 +387,12 @@ func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 	if len(diff.Variables) > 0 {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "[Environment Variables]")
-		
+
 		byFile := make(map[string][]VarDiff)
 		for _, v := range diff.Variables {
 			byFile[v.File] = append(byFile[v.File], v)
 		}
-		
+
 		var sortedFiles []string
 		for f := range byFile {
 			sortedFiles = append(sortedFiles, f)

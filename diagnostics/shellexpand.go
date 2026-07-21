@@ -110,4 +110,3 @@ func resolveShellExpr(s string, env map[string]string) string {
 func ResolveShellExpr(s string, env map[string]string) string {
 	return resolveShellExpr(s, env)
 }
-
