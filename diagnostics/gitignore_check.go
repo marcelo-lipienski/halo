@@ -189,10 +189,10 @@ func isIgnoredCustom(filePath string, configDir string) (bool, error) {
 		if err != nil {
 			continue
 		}
-		
+
 		scanner := bufio.NewScanner(file)
 		ignoreDir := filepath.Dir(ignorePath)
-		
+
 		relPath, err := filepath.Rel(ignoreDir, absFile)
 		if err != nil {
 			_ = file.Close()

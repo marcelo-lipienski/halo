@@ -490,4 +490,3 @@ var getOccupyingProcessFunc = func(port string, proto string) (string, int, erro
 func GetOccupyingProcess(port string, proto string) (string, int, error) {
 	return getOccupyingProcessFunc(port, proto)
 }
-

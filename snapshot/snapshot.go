@@ -46,12 +46,12 @@ type ContainerSnapshot struct {
 }
 
 type EnvironmentSnapshot struct {
-	CreatedAt time.Time                            `json:"created_at"`
-	Project   string                               `json:"project"`
-	Files     map[string]FileSnapshot              `json:"files"`     // path -> file info
-	Variables map[string]map[string]string         `json:"variables"` // file path -> key -> value
-	Ports     []PortSnapshot                       `json:"ports"`
-	Services  map[string]ContainerSnapshot         `json:"services"`  // service name -> container info
+	CreatedAt time.Time                    `json:"created_at"`
+	Project   string                       `json:"project"`
+	Files     map[string]FileSnapshot      `json:"files"`     // path -> file info
+	Variables map[string]map[string]string `json:"variables"` // file path -> key -> value
+	Ports     []PortSnapshot               `json:"ports"`
+	Services  map[string]ContainerSnapshot `json:"services"` // service name -> container info
 }
 
 // computeSHA256 returns hex SHA256 of file.
@@ -242,7 +242,7 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 		if err != nil {
 			continue
 		}
-		
+
 		relPath, err := filepath.Rel(configDir, p)
 		if err != nil {
 			relPath = p

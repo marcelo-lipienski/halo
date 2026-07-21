@@ -30,12 +30,12 @@ func TestParseHostPortProto(t *testing.T) {
 
 func TestDiff(t *testing.T) {
 	now := time.Now()
-	
+
 	oldSnap := &EnvironmentSnapshot{
 		CreatedAt: now,
 		Project:   "test-project",
 		Files: map[string]FileSnapshot{
-			".env": {Path: ".env", Size: 100, Hash: "hash1"},
+			".env":               {Path: ".env", Size: 100, Hash: "hash1"},
 			"docker-compose.yml": {Path: "docker-compose.yml", Size: 200, Hash: "hash2"},
 		},
 		Variables: map[string]map[string]string{
@@ -56,7 +56,7 @@ func TestDiff(t *testing.T) {
 		CreatedAt: now.Add(time.Minute),
 		Project:   "test-project",
 		Files: map[string]FileSnapshot{
-			".env": {Path: ".env", Size: 110, Hash: "hash1-modified"},
+			".env":                        {Path: ".env", Size: 110, Hash: "hash1-modified"},
 			"docker-compose.override.yml": {Path: "docker-compose.override.yml", Size: 50, Hash: "hash3"},
 		},
 		Variables: map[string]map[string]string{
@@ -80,7 +80,7 @@ func TestDiff(t *testing.T) {
 	if len(diff.Files) != 3 {
 		t.Errorf("Expected 3 file changes, got %d", len(diff.Files))
 	}
-	
+
 	var modifiedEnv, removedCompose, addedOverride bool
 	for _, f := range diff.Files {
 		switch f.Path {
@@ -121,7 +121,7 @@ func TestDiff(t *testing.T) {
 	var buf bytes.Buffer
 	RenderText(&buf, diff, oldSnap.CreatedAt)
 	out := buf.String()
-	
+
 	if !bytes.Contains(buf.Bytes(), []byte(".env (modified)")) {
 		t.Errorf("RenderText missing modified file: %s", out)
 	}

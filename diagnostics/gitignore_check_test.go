@@ -12,9 +12,9 @@ import (
 
 func TestMatchGitignorePattern(t *testing.T) {
 	tests := []struct {
-		pattern  string
-		relPath  string
-		want     bool
+		pattern string
+		relPath string
+		want    bool
 	}{
 		{"/.env", ".env", true},
 		{"/.env", "sub/.env", false},
@@ -63,7 +63,7 @@ func TestCheckGitignoreSecurity(t *testing.T) {
 
 	// 1. Run checks (should fail since no .gitignore exists)
 	results := e.CheckGitignoreSecurity(ctx)
-	
+
 	failedEnv := false
 	failedLocal := false
 	for _, r := range results {
