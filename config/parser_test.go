@@ -404,6 +404,32 @@ func TestMergeComposeConfigsOverlappingVolumes(t *testing.T) {
 	}
 }
 
+func TestMergeComposeConfigsOverlappingPorts(t *testing.T) {
+	cfg1 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				Ports: ComposePorts{"80:80", "443:443"},
+			},
+		},
+	}
+
+	cfg2 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				Ports: ComposePorts{"80:80", "8080:8080"},
+			},
+		},
+	}
+
+	merged := MergeComposeConfigs(cfg1, cfg2)
+	web := merged.Services["web"]
+
+	expectedPorts := ComposePorts{"80:80", "443:443", "8080:8080"}
+	if !reflect.DeepEqual(web.Ports, expectedPorts) {
+		t.Errorf("expected ports %v, got %v", expectedPorts, web.Ports)
+	}
+}
+
 func TestParseSecretsAndConfigs(t *testing.T) {
 	tempDir := t.TempDir()
 	composePath := filepath.Join(tempDir, "docker-compose.yml")

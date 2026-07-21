@@ -527,7 +527,23 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 				destSvc.Environment[k] = v
 			}
 
-			destSvc.Ports = append(destSvc.Ports, srcSvc.Ports...)
+			if len(srcSvc.Ports) > 0 {
+				portMap := make(map[string]bool)
+				var mergedPorts []string
+				for _, p := range destSvc.Ports {
+					if !portMap[p] {
+						portMap[p] = true
+						mergedPorts = append(mergedPorts, p)
+					}
+				}
+				for _, p := range srcSvc.Ports {
+					if !portMap[p] {
+						portMap[p] = true
+						mergedPorts = append(mergedPorts, p)
+					}
+				}
+				destSvc.Ports = mergedPorts
+			}
 
 			destSvc.EnvFiles = append(destSvc.EnvFiles, srcSvc.EnvFiles...)
 
