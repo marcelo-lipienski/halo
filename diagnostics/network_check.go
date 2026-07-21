@@ -24,7 +24,7 @@ func (e *Engine) resolveEnvVars(s string) string {
 	return resolveShellExpr(s, e.Env)
 }
 
-func parseHostPortProto(p string) (string, string) {
+func ParseHostPortProto(p string) (string, string) {
 	proto := "tcp"
 	if strings.HasSuffix(p, "/udp") {
 		proto = "udp"
@@ -59,7 +59,7 @@ func parseHostPortProto(p string) (string, string) {
 // portRangeWarnThreshold is the max ports in a range before warning. See ADR-0006.
 const portRangeWarnThreshold = 64
 
-func checkSinglePortCollision(hostPort string, proto string) bool {
+func CheckSinglePortCollision(hostPort string, proto string) bool {
 	if proto == "udp" {
 		l, err := net.ListenPacket("udp", "127.0.0.1:"+hostPort)
 		if err != nil {
@@ -167,7 +167,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 
 		for _, rawPort := range svc.Ports {
 			resolvedPort := e.resolveEnvVars(rawPort)
-			hostPortRange, proto := parseHostPortProto(resolvedPort)
+			hostPortRange, proto := ParseHostPortProto(resolvedPort)
 			if hostPortRange == "" {
 				continue
 			}
@@ -210,7 +210,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 					continue
 				}
 
-				if checkSinglePortCollision(pStr, proto) {
+				if CheckSinglePortCollision(pStr, proto) {
 					servicesWithCollisions[svcName] = true
 					portCollisionPassed = false
 					errStr := fmt.Sprintf("Port %s (%s) mapped for service %s is already occupied on the host", pStr, proto, svcName)

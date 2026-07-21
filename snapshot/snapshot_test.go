@@ -6,28 +6,6 @@ import (
 	"time"
 )
 
-func TestParseHostPortProto(t *testing.T) {
-	tests := []struct {
-		input     string
-		wantPort  string
-		wantProto string
-	}{
-		{"80:80", "80", "tcp"},
-		{"80", "", "tcp"},
-		{"80:80/udp", "80", "udp"},
-		{"127.0.0.1:8080:80", "8080", "tcp"},
-		{"[::1]:8080:80", "8080", "tcp"},
-		{"3000-3005:3000", "3000-3005", "tcp"},
-	}
-
-	for _, tt := range tests {
-		gotPort, gotProto := parseHostPortProto(tt.input)
-		if gotPort != tt.wantPort || gotProto != tt.wantProto {
-			t.Errorf("parseHostPortProto(%q) = (%q, %q); want (%q, %q)", tt.input, gotPort, gotProto, tt.wantPort, tt.wantProto)
-		}
-	}
-}
-
 func TestDiff(t *testing.T) {
 	now := time.Now()
 

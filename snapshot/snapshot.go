@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -68,68 +67,7 @@ func computeSHA256(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// parseHostPortProto parses host port and protocol.
-func parseHostPortProto(p string) (string, string) {
-	proto := "tcp"
-	if strings.HasSuffix(p, "/udp") {
-		proto = "udp"
-		p = strings.TrimSuffix(p, "/udp")
-	} else if strings.HasSuffix(p, "/tcp") {
-		p = strings.TrimSuffix(p, "/tcp")
-	}
 
-	if strings.HasPrefix(p, "[") {
-		closeBracketIdx := strings.LastIndex(p, "]")
-		if closeBracketIdx != -1 && len(p) > closeBracketIdx+1 && p[closeBracketIdx+1] == ':' {
-			remainder := p[closeBracketIdx+2:]
-			parts := strings.Split(remainder, ":")
-			if len(parts) == 2 {
-				return parts[0], proto
-			}
-			return "", proto
-		}
-	}
-
-	parts := strings.Split(p, ":")
-	switch len(parts) {
-	case 3:
-		return parts[1], proto
-	case 2:
-		return parts[0], proto
-	default:
-		return "", proto
-	}
-}
-
-// checkSinglePortCollision checks if host port is occupied.
-func checkSinglePortCollision(hostPort string, proto string) bool {
-	if proto == "udp" {
-		l, err := net.ListenPacket("udp", "127.0.0.1:"+hostPort)
-		if err != nil {
-			return true
-		}
-		_ = l.Close()
-
-		l2, err2 := net.ListenPacket("udp", "0.0.0.0:"+hostPort)
-		if err2 != nil {
-			return true
-		}
-		_ = l2.Close()
-		return false
-	}
-	l, err := net.Listen("tcp", "127.0.0.1:"+hostPort)
-	if err != nil {
-		return true
-	}
-	_ = l.Close()
-
-	l2, err2 := net.Listen("tcp", "0.0.0.0:"+hostPort)
-	if err2 != nil {
-		return true
-	}
-	_ = l2.Close()
-	return false
-}
 
 // CreateSnapshot captures local environment state. See ADR-0002.
 func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*EnvironmentSnapshot, []string, error) {
@@ -299,7 +237,7 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 		// Ports check
 		for _, rawPort := range svc.Ports {
 			resolvedPort := diagnostics.ResolveShellExpr(rawPort, envMap)
-			hostPortRange, proto := parseHostPortProto(resolvedPort)
+			hostPortRange, proto := diagnostics.ParseHostPortProto(resolvedPort)
 			if hostPortRange == "" {
 				continue
 			}
@@ -335,7 +273,7 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 
 			for _, p := range ports {
 				pStr := strconv.Itoa(p)
-				occupied := checkSinglePortCollision(pStr, proto)
+				occupied := diagnostics.CheckSinglePortCollision(pStr, proto)
 				procName := ""
 				pid := 0
 
