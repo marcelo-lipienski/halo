@@ -173,11 +173,11 @@ func (e *Engine) checkReadPermission(results []output.CheckResult, hostPath, vol
 	return results, false
 }
 
-// checkWritePermission verifies write access and optionally auto-fixes it. See ADR-0005.
-func (e *Engine) checkWritePermission(results []output.CheckResult, hostPath, volSource, svcName string, info os.FileInfo) []output.CheckResult {
+// checkWritePermission verifies write access and optionally auto-fixes it. See ADR-0005 and ADR-0015.
+func (e *Engine) checkWritePermission(results []output.CheckResult, hostPath, volSource, svcName string, info os.FileInfo) ([]output.CheckResult, bool) {
 	writable, wErr := isWritable(hostPath)
 	if writable && wErr == nil {
-		return results
+		return results, true
 	}
 
 	pathType := "Directory"
@@ -193,7 +193,7 @@ func (e *Engine) checkWritePermission(results []output.CheckResult, hostPath, vo
 			Error:      fmt.Sprintf("[Dry-Run] Would apply permissions to %s '%s'", pathType, hostPath),
 			Mitigation: getPermissionMitigation(hostPath, true, info.IsDir()),
 		})
-		return results
+		return results, false
 	}
 
 	shouldFix := e.AutoFix || e.Interactive
@@ -218,7 +218,7 @@ func (e *Engine) checkWritePermission(results []output.CheckResult, hostPath, vo
 					Name:   fmt.Sprintf("Volume write lockout auto-fixed: %s", volSource),
 					Status: output.CheckPassed,
 				})
-				return results
+				return results, true
 			}
 		}
 	}
@@ -234,7 +234,7 @@ func (e *Engine) checkWritePermission(results []output.CheckResult, hostPath, vo
 		Error:      errStr,
 		Mitigation: getPermissionMitigation(hostPath, true, info.IsDir()),
 	})
-	return results
+	return results, false
 }
 
 func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckResult {
@@ -383,7 +383,11 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 							var readable bool
 							results, readable = e.checkReadPermission(results, hostPath, vol.Source, svcName, info)
 							if readable && !vol.ReadOnly {
-								results = e.checkWritePermission(results, hostPath, vol.Source, svcName, info)
+								var writable bool
+								results, writable = e.checkWritePermission(results, hostPath, vol.Source, svcName, info)
+								if !writable {
+									volumeCheckPassed = false
+								}
 							} else if !readable {
 								volumeCheckPassed = false
 							}
@@ -427,9 +431,9 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				volumeCheckPassed = false
 			}
 			if readable && !vol.ReadOnly {
-				before := len(results)
-				results = e.checkWritePermission(results, hostPath, vol.Source, svcName, info)
-				if len(results) > before {
+				var writable bool
+				results, writable = e.checkWritePermission(results, hostPath, vol.Source, svcName, info)
+				if !writable {
 					volumeCheckPassed = false
 				}
 			}
