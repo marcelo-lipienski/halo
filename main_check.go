@@ -199,15 +199,14 @@ func getWatchFiles() []string {
 		files = append(files, examplePath)
 	}
 
+	envMap, _ := config.ParseEnv(envPath)
+
 	// Detect service env_files dynamically. See ADR-0003.
 	for _, file := range filesToLoad {
 		if comp, err := config.ParseCompose(file); err == nil {
 			for _, svc := range comp.Services {
 				for _, ef := range svc.EnvFiles {
-					resolvedPath := ef.File
-					if strings.Contains(resolvedPath, "$") {
-						resolvedPath = os.ExpandEnv(resolvedPath)
-					}
+					resolvedPath := diagnostics.ResolveShellExpr(ef.File, envMap)
 					path := resolvedPath
 					if !filepath.IsAbs(path) {
 						baseDir := ef.BaseDir

@@ -225,6 +225,65 @@ services:
 	}
 }
 
+func TestGetWatchFilesServiceEnvFilesWithEnvVar(t *testing.T) {
+	tempDir := t.TempDir()
+
+	envPath := filepath.Join(tempDir, ".env")
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	svcEnvPath := filepath.Join(tempDir, "src", "myapp", ".env")
+
+	_ = os.MkdirAll(filepath.Dir(svcEnvPath), 0755)
+	_ = os.WriteFile(envPath, []byte("APP_ENV_DIR=src/myapp\n"), 0644)
+	_ = os.WriteFile(svcEnvPath, []byte(""), 0644)
+
+	composeContent := `
+services:
+  app:
+    image: nginx
+    env_file:
+      - ${APP_ENV_DIR}/.env
+`
+	_ = os.WriteFile(composePath, []byte(composeContent), 0644)
+
+	origConfigDir := configDir
+	origEnvFile := envFile
+	origComposeFiles := composeFiles
+	defer func() {
+		configDir = origConfigDir
+		envFile = origEnvFile
+		composeFiles = origComposeFiles
+	}()
+
+	configDir = tempDir
+	envFile = ""
+	composeFiles = nil
+
+	files := getWatchFiles()
+
+	expectedFiles := map[string]bool{
+		envPath:     true,
+		composePath: true,
+		svcEnvPath:  true,
+	}
+
+	absExpected := make(map[string]bool)
+	for f := range expectedFiles {
+		abs, _ := filepath.Abs(f)
+		absExpected[abs] = true
+	}
+
+	if len(files) != 3 {
+		t.Fatalf("expected 3 watch files, got %d: %v", len(files), files)
+	}
+
+	for _, f := range files {
+		abs, _ := filepath.Abs(f)
+		if !absExpected[abs] {
+			t.Errorf("unexpected file in watch list: %s (abs: %s)", f, abs)
+		}
+	}
+}
+
 func TestCLIVersion(t *testing.T) {
 	stdoutStr, stderrStr, exitCode := runInProcess([]string{"version"})
 	if exitCode != 0 {
