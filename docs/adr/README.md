@@ -16,3 +16,7 @@ Before starting a task, search this index or check the corresponding ADR to load
 | `0006` | [Docker API & Graceful Degradation](0006-docker-api-graceful-degradation.md) | Docker daemon detection, socket connection, ports check | [0006-docker-api-graceful-degradation.md](0006-docker-api-graceful-degradation.md) |
 | `0007` | [Git & Pull Request Workflow](0007-git-pr-workflow.md) | Feature branching, commit formatting, wait-for-actions, PR merging | [0007-git-pr-workflow.md](0007-git-pr-workflow.md) |
 | `0008` | [Docstring Hygiene & Comment Standards](0008-docstring-hygiene-standards.md) | Code commenting, comment conciseness, ADR referencing | [0008-docstring-hygiene-standards.md](0008-docstring-hygiene-standards.md) |
+| `0009` | [Testing Standards & Mocking](0009-testing-standards-mocking.md) | isolated testing, mock docker client, table-driven testing, benchmarks | [0009-testing-standards-mocking.md](0009-testing-standards-mocking.md) |
+| `0010` | [State Snapshot & Drift Engine](0010-state-snapshot-drift-engine.md) | snapshot serialization, environment drift, port bindings, container state diffs | [0010-state-snapshot-drift-engine.md](0010-state-snapshot-drift-engine.md) |
+| `0011` | [Security Redaction & Gitignore Boundaries](0011-security-redaction-boundaries.md) | key matching, credential redaction, untracked env checks, gitignore checks | [0011-security-redaction-boundaries.md](0011-security-redaction-boundaries.md) |
+
