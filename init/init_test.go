@@ -95,6 +95,40 @@ DB_PORT=5432
 			expectedTotal:  0,
 			expectedOutput: ``,
 		},
+		{
+			name: "Duplicate keys in example file (fresh init)",
+			exampleContent: `
+DB_URL=postgres://localhost
+DB_URL=postgres://other
+DB_PORT=5432
+`,
+			targetExists:  false,
+			expectedAdded: []string{"DB_URL", "DB_PORT"},
+			expectedTotal: 2,
+			expectedOutput: `
+DB_URL=postgres://localhost
+DB_URL=postgres://other
+DB_PORT=5432
+`,
+		},
+		{
+			name: "Duplicate keys in example file with target existing",
+			exampleContent: `
+DB_URL=postgres://localhost
+DB_URL=postgres://other
+DB_PORT=5432
+`,
+			targetContent: `DB_HOST=localhost`,
+			targetExists:  true,
+			expectedAdded: []string{"DB_URL", "DB_PORT"},
+			expectedTotal: 2,
+			expectedOutput: `DB_HOST=localhost
+
+# Added by halo init
+DB_URL=postgres://localhost
+DB_PORT=5432
+`,
+		},
 	}
 
 	for _, tt := range tests {
