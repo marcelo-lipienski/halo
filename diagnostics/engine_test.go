@@ -2495,3 +2495,32 @@ services:
 		t.Error("expected to find failed volume permission lockout check result")
 	}
 }
+
+func TestCheckSinglePortCollision(t *testing.T) {
+	// Find a free TCP port by listening on 127.0.0.1:0
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to find free port: %v", err)
+	}
+	port := strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
+	_ = l.Close()
+
+	// Port should not be occupied now
+	if CheckSinglePortCollision(port, "tcp") {
+		t.Errorf("expected port %s to be available, but collision reported", port)
+	}
+
+	// Listen on [::1] (IPv6 loopback) on the port
+	lIPv6, err := net.Listen("tcp", "[::1]:"+port)
+	if err != nil {
+		// IPv6 might not be enabled on all build environments, skip if bind fails
+		t.Skipf("IPv6 listen unavailable: %v", err)
+	}
+	defer lIPv6.Close()
+
+	// CheckSinglePortCollision should now report collision due to IPv6 binding
+	if !CheckSinglePortCollision(port, "tcp") {
+		t.Errorf("expected port %s to collide when bound to IPv6 [::1], but got available", port)
+	}
+}
+
