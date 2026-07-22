@@ -91,6 +91,40 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 		}
 
 		if tracked {
+			if e.DryRun {
+				results = append(results, output.CheckResult{
+					Group:      "Security Audits",
+					Name:       fmt.Sprintf("Tracked Env File: %s", relPath),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("[Dry-Run] Would remove '%s' from Git tracking (git rm --cached %s)", relPath, relPath),
+					Mitigation: fmt.Sprintf("Remove it from Git tracking without deleting it from disk: run 'git rm --cached %s' and commit the deletion.", relPath),
+				})
+				continue
+			}
+
+			shouldFix := e.AutoFix || e.Interactive
+			confirmed := true
+			if e.Interactive {
+				confirmed = promptConfirm(fmt.Sprintf("Environment file '%s' is tracked by Git. Remove it from Git index (git rm --cached)?", relPath))
+			}
+
+			if shouldFix && confirmed {
+				cmd := exec.CommandContext(ctx, "git", "rm", "--cached", path)
+				cmd.Dir = e.ConfigDir
+				if err := cmd.Run(); err == nil {
+					checkCmd := exec.CommandContext(ctx, "git", "ls-files", "--error-unmatch", path)
+					checkCmd.Dir = e.ConfigDir
+					if err := checkCmd.Run(); err != nil {
+						results = append(results, output.CheckResult{
+							Group:  "Security Audits",
+							Name:   fmt.Sprintf("Tracked Env File auto-fixed: %s", relPath),
+							Status: output.CheckPassed,
+						})
+						continue
+					}
+				}
+			}
+
 			results = append(results, output.CheckResult{
 				Group:      "Security Audits",
 				Name:       fmt.Sprintf("Tracked Env File: %s", relPath),
@@ -115,6 +149,53 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 		}
 
 		if !ignored {
+			relPath, relErr := filepath.Rel(e.ConfigDir, path)
+			if relErr != nil {
+				relPath = path
+			}
+
+			gitignorePath := filepath.Join(e.ConfigDir, ".gitignore")
+
+			if e.DryRun {
+				results = append(results, output.CheckResult{
+					Group:      "Security Audits",
+					Name:       fmt.Sprintf("Unignored Env File: %s", relPath),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("[Dry-Run] Would add '%s' to %s", relPath, gitignorePath),
+					Mitigation: fmt.Sprintf("Add '%s' to your '.gitignore' file to prevent it from being accidentally committed.", relPath),
+				})
+				continue
+			}
+
+			shouldFix := e.AutoFix || e.Interactive
+			confirmed := true
+			if e.Interactive {
+				confirmed = promptConfirm(fmt.Sprintf("Environment file '%s' is not ignored by Git. Add it to .gitignore?", relPath))
+			}
+
+			if shouldFix && confirmed {
+				if err := appendToGitignore(gitignorePath, relPath); err == nil {
+					reIgnored := false
+					if gitAvailable {
+						cmd := exec.CommandContext(ctx, "git", "check-ignore", "-q", path)
+						cmd.Dir = e.ConfigDir
+						if err := cmd.Run(); err == nil {
+							reIgnored = true
+						}
+					} else {
+						reIgnored, _ = isIgnoredCustom(ctx, path, e.ConfigDir)
+					}
+					if reIgnored {
+						results = append(results, output.CheckResult{
+							Group:  "Security Audits",
+							Name:   fmt.Sprintf("Ignored Env File auto-fixed: %s", relPath),
+							Status: output.CheckPassed,
+						})
+						continue
+					}
+				}
+			}
+
 			results = append(results, output.CheckResult{
 				Group:      "Security Audits",
 				Name:       fmt.Sprintf("Unignored Env File: %s", relPath),
@@ -132,6 +213,38 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 	}
 
 	return results
+}
+
+func appendToGitignore(gitignorePath, entry string) error {
+	var fileExists bool
+	if info, err := os.Stat(gitignorePath); err == nil && !info.IsDir() {
+		fileExists = true
+	}
+
+	f, err := os.OpenFile(gitignorePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+
+	if fileExists {
+		info, err := os.Stat(gitignorePath)
+		if err == nil && info.Size() > 0 {
+			rf, err := os.Open(gitignorePath)
+			if err == nil {
+				if _, errSeek := rf.Seek(-1, 2); errSeek == nil {
+					b := make([]byte, 1)
+					if _, errRead := rf.Read(b); errRead == nil && b[0] != '\n' {
+						_, _ = f.WriteString("\n")
+					}
+				}
+				_ = rf.Close()
+			}
+		}
+	}
+
+	_, err = f.WriteString(entry + "\n")
+	return err
 }
 
 func findEnvFiles(ctx context.Context, dir string) ([]string, error) {

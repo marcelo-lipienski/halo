@@ -3,6 +3,7 @@ package diagnostics
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/marcelo-lipienski/halo/config"
@@ -109,5 +110,39 @@ func TestCheckEnvironmentalAlignmentDuplicateRef(t *testing.T) {
 
 	if missingCount != 1 {
 		t.Fatalf("expected exactly 1 result for missing DATABASE_URL, got %d", missingCount)
+	}
+}
+
+func TestCheckEnvExampleDriftAutoFixAndDryRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	examplePath := filepath.Join(tmpDir, ".env.example")
+
+	_ = os.WriteFile(examplePath, []byte("FOO=bar\nBAR=baz\n"), 0644)
+	_ = os.WriteFile(envPath, []byte("FOO=bar\n"), 0644)
+
+	// DryRun test
+	eDry := &Engine{DryRun: true}
+	resDry, err := eDry.CheckEnvExampleDrift(envPath, examplePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resDry) == 0 || resDry[0].Status != output.CheckFailed {
+		t.Errorf("expected failed dry-run result, got: %+v", resDry)
+	}
+
+	// AutoFix test
+	eFix := &Engine{AutoFix: true}
+	resFix, err := eFix.CheckEnvExampleDrift(envPath, examplePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resFix) == 0 || resFix[0].Status != output.CheckPassed {
+		t.Errorf("expected passed auto-fixed result, got: %+v", resFix)
+	}
+
+	envContent, _ := os.ReadFile(envPath)
+	if !strings.Contains(string(envContent), "BAR=baz") {
+		t.Errorf("expected .env to contain BAR=baz after auto-fix, got: %s", string(envContent))
 	}
 }

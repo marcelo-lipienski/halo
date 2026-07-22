@@ -461,4 +461,3 @@ func TestCreateSnapshotContextCancelled(t *testing.T) {
 		t.Errorf("expected context.Canceled error, got %v", err)
 	}
 }
-
