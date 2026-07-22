@@ -444,3 +444,21 @@ func TestPortRangeDiff(t *testing.T) {
 		t.Errorf("unexpected port diff: %+v", diff.Ports[0])
 	}
 }
+
+func TestCreateSnapshotContextCancelled(t *testing.T) {
+	tempDir := t.TempDir()
+	envPath := filepath.Join(tempDir, ".env")
+	_ = os.WriteFile(envPath, []byte("TEST=1"), 0644)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := CreateSnapshot(ctx, tempDir, envPath, nil)
+	if err == nil {
+		t.Fatal("expected error on cancelled context, got nil")
+	}
+	if err != context.Canceled {
+		t.Errorf("expected context.Canceled error, got %v", err)
+	}
+}
+

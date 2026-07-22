@@ -53,22 +53,42 @@ type EnvironmentSnapshot struct {
 	Services  map[string]ContainerSnapshot `json:"services"` // service name -> container info
 }
 
-// computeSHA256 returns hex SHA256 of file.
-func computeSHA256(path string) (string, error) {
+// computeSHA256 returns hex SHA256 of file, checking context cancellation during read.
+func computeSHA256(ctx context.Context, path string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = f.Close() }()
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
+	buf := make([]byte, 32*1024)
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		n, err := f.Read(buf)
+		if n > 0 {
+			h.Write(buf[:n])
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", err
+		}
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // CreateSnapshot captures local environment state. See ADR-0002.
 func CreateSnapshot(ctx context.Context, configDir string, envPath string, composeFiles []string) (*EnvironmentSnapshot, []string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+
 	var warnings []string
 
 	if envPath == "" {
@@ -142,6 +162,9 @@ func CreateSnapshot(ctx context.Context, configDir string, envPath string, compo
 	// Find service env_files.
 	var parsedConfigs []*config.ComposeConfig
 	for _, file := range filesToLoad {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
 		if _, err := os.Stat(file); err == nil {
 			if comp, err := config.ParseCompose(file); err == nil {
 				parsedConfigs = append(parsedConfigs, comp)
@@ -151,6 +174,9 @@ func CreateSnapshot(ctx context.Context, configDir string, envPath string, compo
 	mergedComp := config.MergeComposeConfigs(parsedConfigs...)
 
 	for _, svc := range mergedComp.Services {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
 		for _, ef := range svc.EnvFiles {
 			resolvedPath := diagnostics.ResolveShellExpr(ef.File, envMap)
 			path := resolvedPath
@@ -170,12 +196,18 @@ func CreateSnapshot(ctx context.Context, configDir string, envPath string, compo
 	varsSnap := make(map[string]map[string]string)
 
 	for p := range trackedFiles {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
 		stat, err := os.Stat(p)
 		if err != nil {
 			continue
 		}
-		hash, err := computeSHA256(p)
+		hash, err := computeSHA256(ctx, p)
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
 			continue
 		}
 
@@ -200,6 +232,9 @@ func CreateSnapshot(ctx context.Context, configDir string, envPath string, compo
 	}
 
 	// 2. Docker client setup
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	var dockerCli client.APIClient
 	var dockerErr error
 	dockerCli, dockerErr = client.New(client.FromEnv)
@@ -232,8 +267,14 @@ func CreateSnapshot(ctx context.Context, configDir string, envPath string, compo
 	}
 
 	for svcName, svc := range mergedComp.Services {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
 		// Ports check
 		for _, rawPort := range svc.Ports {
+			if err := ctx.Err(); err != nil {
+				return nil, nil, err
+			}
 			resolvedPort := diagnostics.ResolveShellExpr(rawPort, envMap)
 			hostPortRange, proto := diagnostics.ParseHostPortProto(resolvedPort)
 			if hostPortRange == "" {
@@ -272,6 +313,9 @@ func CreateSnapshot(ctx context.Context, configDir string, envPath string, compo
 			}
 
 			for _, p := range ports {
+				if err := ctx.Err(); err != nil {
+					return nil, nil, err
+				}
 				pStr := strconv.Itoa(p)
 				occupied := diagnostics.CheckSinglePortCollision(pStr, proto)
 				procName := ""
@@ -295,6 +339,9 @@ func CreateSnapshot(ctx context.Context, configDir string, envPath string, compo
 
 		// Container check
 		if dockerCli != nil && listErr == nil {
+			if err := ctx.Err(); err != nil {
+				return nil, nil, err
+			}
 			var matchedContainer *container.Summary
 			for _, c := range containers.Items {
 				cProj := strings.ToLower(c.Labels["com.docker.compose.project"])

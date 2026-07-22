@@ -4,6 +4,7 @@
 - Go ^1.26, Docker (daemon check), prioritize standard library.
 - Idiomatic Go: propagate `context.Context`, wrap errors (`errors.Join`), AST-based expansion (`mvdan.cc/sh/v3`).
 - Defensive Engine execution: Always check for nil `*config.ComposeConfig` in diagnostic handlers before accessing services, secrets, or configs.
+- Context Cancellation: Check `ctx.Err()` at loop boundaries during file scanning, hashing, and service port inspection to ensure prompt cancellation in long-running I/O operations.
 
 ## 2. Testing & Quality
 - Test-First (TDD): Table-driven tests, benchmark tests (`func Benchmark...`).
