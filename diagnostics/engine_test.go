@@ -2516,7 +2516,9 @@ func TestCheckSinglePortCollision(t *testing.T) {
 		// IPv6 might not be enabled on all build environments, skip if bind fails
 		t.Skipf("IPv6 listen unavailable: %v", err)
 	}
-	defer lIPv6.Close()
+	defer func() {
+		_ = lIPv6.Close()
+	}()
 
 	// CheckSinglePortCollision should now report collision due to IPv6 binding
 	if !CheckSinglePortCollision(port, "tcp") {
