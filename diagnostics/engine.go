@@ -48,10 +48,15 @@ func (e *Engine) Run(ctx context.Context) *output.DiagnosticsReport {
 	var wg sync.WaitGroup
 	wg.Add(4)
 
+	groupTimeout := 2 * time.Second
+	if e.AutoFix || e.Interactive {
+		groupTimeout = 30 * time.Second
+	}
+
 	// Group A: Environmental Alignment
 	go func() {
 		defer wg.Done()
-		gCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		gCtx, cancel := context.WithTimeout(ctx, groupTimeout)
 		defer cancel()
 		resultsA = e.checkEnvironmentalAlignment(gCtx)
 	}()
@@ -59,7 +64,7 @@ func (e *Engine) Run(ctx context.Context) *output.DiagnosticsReport {
 	// Group B: Network & Port Availability
 	go func() {
 		defer wg.Done()
-		gCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		gCtx, cancel := context.WithTimeout(ctx, groupTimeout)
 		defer cancel()
 		resultsB = e.checkNetworkAndPort(gCtx)
 	}()
@@ -67,7 +72,7 @@ func (e *Engine) Run(ctx context.Context) *output.DiagnosticsReport {
 	// Group C: Volume & File Permissions
 	go func() {
 		defer wg.Done()
-		gCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		gCtx, cancel := context.WithTimeout(ctx, groupTimeout)
 		defer cancel()
 		resultsC = e.checkVolumeAndPermissions(gCtx)
 	}()
@@ -75,7 +80,7 @@ func (e *Engine) Run(ctx context.Context) *output.DiagnosticsReport {
 	// Group D: Security Audits
 	go func() {
 		defer wg.Done()
-		gCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		gCtx, cancel := context.WithTimeout(ctx, groupTimeout)
 		defer cancel()
 		resultsD = e.CheckGitignoreSecurity(gCtx)
 	}()

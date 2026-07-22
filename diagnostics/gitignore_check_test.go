@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/marcelo-lipienski/halo/config"
@@ -189,3 +190,39 @@ func TestCheckGitignoreSecurityContextCancellation(t *testing.T) {
 	}
 }
 
+func TestCheckGitignoreSecurityAutoFixAndDryRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	if err := os.WriteFile(envPath, []byte("SECRET=1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// DryRun test
+	eDry := &Engine{
+		ConfigDir: tmpDir,
+		Compose:   &config.ComposeConfig{},
+		Env:       map[string]string{},
+		DryRun:    true,
+	}
+	resultsDry := eDry.CheckGitignoreSecurity(context.Background())
+	if len(resultsDry) == 0 || resultsDry[0].Status != output.CheckFailed || !strings.Contains(resultsDry[0].Error, "[Dry-Run]") {
+		t.Errorf("expected Dry-Run failure result, got: %+v", resultsDry)
+	}
+
+	// AutoFix test
+	eFix := &Engine{
+		ConfigDir: tmpDir,
+		Compose:   &config.ComposeConfig{},
+		Env:       map[string]string{},
+		AutoFix:   true,
+	}
+	resultsFix := eFix.CheckGitignoreSecurity(context.Background())
+	if len(resultsFix) == 0 || resultsFix[0].Status != output.CheckPassed {
+		t.Errorf("expected passing auto-fixed result, got: %+v", resultsFix)
+	}
+
+	gitignoreContent, _ := os.ReadFile(filepath.Join(tmpDir, ".gitignore"))
+	if !strings.Contains(string(gitignoreContent), ".env") {
+		t.Errorf("expected .gitignore to contain .env, got: %s", string(gitignoreContent))
+	}
+}

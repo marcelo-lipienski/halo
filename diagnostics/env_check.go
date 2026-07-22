@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/marcelo-lipienski/halo/config"
+	init_cmd "github.com/marcelo-lipienski/halo/init"
 	"github.com/marcelo-lipienski/halo/output"
 )
 
@@ -309,7 +310,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 	// Only run drift check if .env file exists on disk.
 	if _, statErr := os.Stat(envPath); statErr == nil {
 		examplePath2 := filepath.Join(filepath.Dir(envPath), ".env.example")
-		driftResults, _ := CheckEnvExampleDrift(envPath, examplePath2)
+		driftResults, _ := e.CheckEnvExampleDrift(envPath, examplePath2)
 		results = append(results, driftResults...)
 	}
 
@@ -321,6 +322,15 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 
 // CheckEnvExampleDrift compares .env against .env.example.
 func CheckEnvExampleDrift(envPath, examplePath string) ([]output.CheckResult, error) {
+	return checkEnvExampleDriftWithEngine(nil, envPath, examplePath)
+}
+
+// CheckEnvExampleDrift compares .env against .env.example using Engine configuration.
+func (e *Engine) CheckEnvExampleDrift(envPath, examplePath string) ([]output.CheckResult, error) {
+	return checkEnvExampleDriftWithEngine(e, envPath, examplePath)
+}
+
+func checkEnvExampleDriftWithEngine(e *Engine, envPath, examplePath string) ([]output.CheckResult, error) {
 	var results []output.CheckResult
 
 	if _, err := os.Stat(examplePath); os.IsNotExist(err) {
@@ -359,13 +369,47 @@ func CheckEnvExampleDrift(envPath, examplePath string) ([]output.CheckResult, er
 	sort.Strings(undeclaredKeys)
 
 	if len(missingKeys) > 0 {
-		results = append(results, output.CheckResult{
-			Group:      "Environmental Alignment",
-			Name:       ".env.example Drift",
-			Status:     output.CheckFailed,
-			Error:      fmt.Sprintf("%d keys in .env.example are missing from .env: %s", len(missingKeys), strings.Join(missingKeys, ", ")),
-			Mitigation: "Run 'halo init' to automatically merge missing keys from .env.example",
-		})
+		if e != nil && e.DryRun {
+			results = append(results, output.CheckResult{
+				Group:      "Environmental Alignment",
+				Name:       ".env.example Drift",
+				Status:     output.CheckFailed,
+				Error:      fmt.Sprintf("[Dry-Run] Would merge %d missing keys from .env.example into .env: %s", len(missingKeys), strings.Join(missingKeys, ", ")),
+				Mitigation: "Run 'halo fix' or 'halo init' to merge missing keys",
+			})
+		} else {
+			shouldFix := e != nil && (e.AutoFix || e.Interactive)
+			confirmed := true
+			if e != nil && e.Interactive {
+				confirmed = promptConfirm(fmt.Sprintf("%d keys in .env.example are missing from .env (%s). Merge them?", len(missingKeys), strings.Join(missingKeys, ", ")))
+			}
+
+			if shouldFix && confirmed {
+				if mergeRes, mergeErr := init_cmd.MergeEnvFiles(examplePath, envPath, false); mergeErr == nil && len(mergeRes.Added) > 0 {
+					results = append(results, output.CheckResult{
+						Group:  "Environmental Alignment",
+						Name:   ".env.example Drift auto-fixed",
+						Status: output.CheckPassed,
+					})
+				} else {
+					results = append(results, output.CheckResult{
+						Group:      "Environmental Alignment",
+						Name:       ".env.example Drift",
+						Status:     output.CheckFailed,
+						Error:      fmt.Sprintf("%d keys in .env.example are missing from .env: %s", len(missingKeys), strings.Join(missingKeys, ", ")),
+						Mitigation: "Run 'halo init' to automatically merge missing keys from .env.example",
+					})
+				}
+			} else {
+				results = append(results, output.CheckResult{
+					Group:      "Environmental Alignment",
+					Name:       ".env.example Drift",
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("%d keys in .env.example are missing from .env: %s", len(missingKeys), strings.Join(missingKeys, ", ")),
+					Mitigation: "Run 'halo init' to automatically merge missing keys from .env.example",
+				})
+			}
+		}
 	} else {
 		results = append(results, output.CheckResult{
 			Group:  "Environmental Alignment",

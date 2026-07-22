@@ -81,3 +81,23 @@ func TestIsReadableAndWritable(t *testing.T) {
 		t.Errorf("expected testFile to be writable, got writable=%v err=%v", writable, err)
 	}
 }
+
+func TestPromptConfirm(t *testing.T) {
+	origStdin := os.Stdin
+	defer func() { os.Stdin = origStdin }()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdin = r
+
+	go func() {
+		_, _ = w.WriteString("y\n")
+		_ = w.Close()
+	}()
+
+	if !promptConfirm("Test question?") {
+		t.Error("expected promptConfirm to return true for 'y\\n'")
+	}
+}

@@ -714,3 +714,62 @@ services:
 		t.Errorf("expected added variable in diff output, got: %q", stdoutStr)
 	}
 }
+
+func TestCLIFixCommand(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web:
+    image: nginx
+    volumes:
+      - ./data_dir:/data
+`
+	_ = os.WriteFile(composePath, []byte(composeContent), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, ".env"), []byte(""), 0644)
+
+	// Run halo fix
+	stdoutStr, stderrStr, exitCode := runInProcess([]string{"fix", "--config-dir", tempDir})
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0 on fix, got %d. stderr: %s, stdout: %s", exitCode, stderrStr, stdoutStr)
+	}
+
+	// Verify missing directory was auto-created
+	if _, err := os.Stat(filepath.Join(tempDir, "data_dir")); err != nil {
+		t.Errorf("expected data_dir to be created by halo fix, err: %v", err)
+	}
+
+	// Verify output contains auto-fixed indication
+	if !strings.Contains(stdoutStr, "auto-fixed") {
+		t.Errorf("expected stdout to mention auto-fixed, got: %q", stdoutStr)
+	}
+}
+
+func TestCLIFixDryRun(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web:
+    image: nginx
+    volumes:
+      - ./data_dir_dryrun:/data
+`
+	_ = os.WriteFile(composePath, []byte(composeContent), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, ".env"), []byte(""), 0644)
+
+	// Run halo fix --dry-run / -d
+	stdoutStr, stderrStr, exitCode := runInProcess([]string{"fix", "--config-dir", tempDir, "-d"})
+	if exitCode != 2 {
+		t.Errorf("expected exit code 2 on dry-run failure, got %d. stderr: %s, stdout: %s", exitCode, stderrStr, stdoutStr)
+	}
+
+	// Verify missing directory was NOT created in dry-run mode
+	if _, err := os.Stat(filepath.Join(tempDir, "data_dir_dryrun")); err == nil {
+		t.Error("expected data_dir_dryrun to NOT be created in dry-run mode")
+	}
+
+	if !strings.Contains(stdoutStr, "[Dry-Run]") {
+		t.Errorf("expected stdout to contain [Dry-Run], got: %q", stdoutStr)
+	}
+}

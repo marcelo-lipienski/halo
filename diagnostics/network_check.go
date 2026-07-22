@@ -120,7 +120,14 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 		projectName = envProj
 	} else if envProj, ok := e.Env["COMPOSE_PROJECT_NAME"]; ok && envProj != "" {
 		projectName = envProj
-	} else {
+	} else if e.Compose != nil && e.Compose.Name != "" {
+		projectName = e.Compose.Name
+	} else if e.ComposePath != "" {
+		if absComposePath, err := filepath.Abs(e.ComposePath); err == nil {
+			projectName = filepath.Base(filepath.Dir(absComposePath))
+		}
+	}
+	if projectName == "" {
 		absDir, _ := filepath.Abs(e.ConfigDir)
 		projectName = filepath.Base(absDir)
 	}
@@ -288,6 +295,61 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 		}
 
 		if matchedContainer == nil {
+			if e.DryRun {
+				results = append(results, output.CheckResult{
+					Group:      "Network & Port Availability",
+					Name:       fmt.Sprintf("Service %s reachability", svcName),
+					Status:     output.CheckFailed,
+					Error:      fmt.Sprintf("[Dry-Run] Would create and start container for service %s (docker compose up -d %s)", svcName, svcName),
+					Mitigation: fmt.Sprintf("Run: docker compose up -d %s", svcName),
+				})
+				continue
+			}
+
+			shouldFix := e.AutoFix || e.Interactive
+			confirmed := true
+			if e.Interactive {
+				confirmed = promptConfirm(fmt.Sprintf("No container found for service %s. Create and start it (docker compose up -d %s)?", svcName, svcName))
+			}
+
+			if shouldFix && confirmed {
+				composeFile := e.ComposePath
+				if composeFile == "" {
+					composeFile = filepath.Join(e.ConfigDir, "docker-compose.yml")
+				}
+				upArgs := []string{"compose", "-f", composeFile}
+				if e.EnvPath != "" {
+					if _, statErr := os.Stat(e.EnvPath); statErr == nil {
+						upArgs = append(upArgs, "--env-file", e.EnvPath)
+					}
+				}
+				upArgs = append(upArgs, "up", "-d", svcName)
+				upCmd := exec.CommandContext(ctx, "docker", upArgs...)
+				upCmd.Dir = e.ConfigDir
+				if err := upCmd.Run(); err == nil {
+					if reContainers, listErr := e.DockerCli.ContainerList(ctx, client.ContainerListOptions{All: true}); listErr == nil {
+						for _, c := range reContainers.Items {
+							cProj := strings.ToLower(c.Labels["com.docker.compose.project"])
+							cSvc := c.Labels["com.docker.compose.service"]
+							if cProj == projectName && cSvc == svcName {
+								if c.State == "running" {
+									results = append(results, output.CheckResult{
+										Group:  "Network & Port Availability",
+										Name:   fmt.Sprintf("Service %s reachability auto-fixed", svcName),
+										Status: output.CheckPassed,
+									})
+									matchedContainer = &c
+									break
+								}
+							}
+						}
+						if matchedContainer != nil {
+							continue
+						}
+					}
+				}
+			}
+
 			results = append(results, output.CheckResult{
 				Group:      "Network & Port Availability",
 				Name:       fmt.Sprintf("Service %s reachability", svcName),
@@ -337,6 +399,34 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 				res.Error = fmt.Sprintf("Container for service %s is in state '%s' instead of 'running'", svcName, stateStr)
 				res.Mitigation = fmt.Sprintf("Run: docker compose start %s or check logs: docker compose logs %s", svcName, svcName)
 			}
+
+			if e.DryRun {
+				res.Error = fmt.Sprintf("[Dry-Run] Would start exited container for service %s (currently '%s')", svcName, matchedContainer.State)
+				results = append(results, res)
+				continue
+			}
+
+			shouldFix := e.AutoFix || e.Interactive
+			confirmed := true
+			if e.Interactive {
+				confirmed = promptConfirm(fmt.Sprintf("Container for service %s is %s. Start it?", svcName, matchedContainer.State))
+			}
+
+			if shouldFix && confirmed {
+				if _, startErr := e.DockerCli.ContainerStart(ctx, matchedContainer.ID, client.ContainerStartOptions{}); startErr == nil {
+					if updatedInspect, insErr := e.DockerCli.ContainerInspect(ctx, matchedContainer.ID, client.ContainerInspectOptions{}); insErr == nil {
+						if updatedInspect.Container.State != nil && updatedInspect.Container.State.Running {
+							results = append(results, output.CheckResult{
+								Group:  "Network & Port Availability",
+								Name:   fmt.Sprintf("Service %s reachability auto-fixed", svcName),
+								Status: output.CheckPassed,
+							})
+							continue
+						}
+					}
+				}
+			}
+
 			results = append(results, res)
 			continue
 		}

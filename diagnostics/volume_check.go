@@ -1,6 +1,7 @@
 package diagnostics
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -22,14 +23,9 @@ var promptConfirm = func(question string) bool {
 	promptMutex.Lock()
 	defer promptMutex.Unlock()
 
-	fileInfo, err := os.Stdin.Stat()
-	if err != nil || (fileInfo.Mode()&os.ModeCharDevice) == 0 {
-		return false
-	}
-
 	fmt.Fprintf(os.Stderr, "%s [y/N]: ", question)
-	var response string
-	_, err = fmt.Scanln(&response)
+	reader := bufio.NewReader(os.Stdin)
+	response, err := reader.ReadString('\n')
 	if err != nil {
 		return false
 	}

@@ -138,7 +138,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enables debug logging")
 	rootCmd.PersistentFlags().BoolVar(&fix, "fix", false, "Automatically attempt to mitigate file permission and missing directory issues")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppresses all standard output")
-	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Preview changes when running with --fix without modifying the filesystem")
+	rootCmd.PersistentFlags().BoolVarP(&dryRun, "dry-run", "d", false, "Preview changes when running with --fix or fix command without modifying the filesystem")
 	rootCmd.PersistentFlags().BoolVarP(&interactive, "interactive", "i", false, "Confirm mitigation steps interactively before applying them")
 	rootCmd.PersistentFlags().BoolVarP(&watch, "watch", "w", false, "Watch configuration files for changes and automatically re-run checks")
 
@@ -150,6 +150,18 @@ func newRootCmd() *cobra.Command {
 				runWatch(context.Background())
 			} else {
 				osExit.Exit(executeCheck())
+			}
+		},
+	}
+
+	fixCmd := &cobra.Command{
+		Use:   "fix",
+		Short: "Automatically mitigate configuration, file permission, and missing directory/file issues",
+		Run: func(cmd *cobra.Command, args []string) {
+			if watch {
+				runWatch(context.Background())
+			} else {
+				osExit.Exit(executeFix())
 			}
 		},
 	}
@@ -195,6 +207,7 @@ func newRootCmd() *cobra.Command {
 	}
 
 	rootCmd.AddCommand(checkCmd)
+	rootCmd.AddCommand(fixCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(doctorCmd)

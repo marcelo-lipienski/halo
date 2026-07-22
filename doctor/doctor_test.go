@@ -153,8 +153,6 @@ func TestRunDoctor(t *testing.T) {
 	}
 }
 
-
-
 func TestCheckComposeVersion(t *testing.T) {
 	ctx := context.Background()
 	res := checkComposeVersion(ctx)

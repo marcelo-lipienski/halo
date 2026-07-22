@@ -18,6 +18,7 @@ func ParseEnv(path string) (map[string]string, error) {
 
 // ComposeConfig represents the root of docker-compose.yml
 type ComposeConfig struct {
+	Name     string                      `yaml:"name"`
 	Services map[string]ComposeService   `yaml:"services"`
 	Volumes  map[string]interface{}      `yaml:"volumes"`
 	Secrets  map[string]ComposeSecret    `yaml:"secrets"`
