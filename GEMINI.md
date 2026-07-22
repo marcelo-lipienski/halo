@@ -5,6 +5,7 @@
 - Idiomatic Go: propagate `context.Context`, wrap errors (`errors.Join`), AST-based expansion (`mvdan.cc/sh/v3`).
 - Defensive Engine execution: Always check for nil `*config.ComposeConfig` in diagnostic handlers before accessing services, secrets, or configs.
 - Context Cancellation: Check `ctx.Err()` at loop boundaries during file scanning, hashing, and service port inspection to ensure prompt cancellation in long-running I/O operations.
+- Multi-stage Dockerfiles: Pre-scan stage aliases (`AS <alias>`) in a first pass before auditing base image mutability to handle forward and out-of-order stage references.
 
 ## 2. Testing & Quality
 - Test-First (TDD): Table-driven tests, benchmark tests (`func Benchmark...`).
