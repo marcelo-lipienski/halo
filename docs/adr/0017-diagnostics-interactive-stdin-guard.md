@@ -1,7 +1,7 @@
 # 17. Diagnostics Interactive Stdin Guard and Prompt Safety
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 In `diagnostics/volume_check.go`, `promptConfirm` reads user confirmation from `os.Stdin`. When diagnostic checks are executed concurrently across multiple goroutines, non-interactive execution contexts (e.g. CI/CD pipelines or piped input) can cause `fmt.Scanln` to block indefinitely or race across concurrent check routines.
