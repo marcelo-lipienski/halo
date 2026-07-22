@@ -8,13 +8,13 @@ As the codebase evolves and AI agents assist in implementing tasks, there is a n
 
 ## Decision
 We adopt the Architectural Decision Record (ADR) pattern.
-1. All architectural decisions must be stored in `docs/adr/`.
+1. All architectural decisions, codebase analyses, bug documentations, and suggested improvements must be recorded in `docs/adr/` (avoiding external summary files in `~/.gemini`).
 2. Each file must be named as `<four-digit-id>-<short-description>.md`.
 3. Every ADR must follow a standard structure:
    - **Title/ID**
    - **Status** (Draft, Proposed, Accepted, Superceded, Rejected)
-   - **Context** (Why this decision is being made, problem statement)
-   - **Decision** (The specific engineering choices, APIs, command flags, schemas)
+   - **Context** (Why this decision is being made, problem statement, bug details, or proposed improvement scope)
+   - **Decision** (The specific engineering choices, fix implementation details, APIs, command flags, schemas)
    - **Consequences** (Tradeoffs, impacts on performance, testing, and other components)
 
 ## Consequences
