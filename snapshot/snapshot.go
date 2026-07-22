@@ -68,7 +68,7 @@ func computeSHA256(path string) (string, error) {
 }
 
 // CreateSnapshot captures local environment state. See ADR-0002.
-func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*EnvironmentSnapshot, []string, error) {
+func CreateSnapshot(ctx context.Context, configDir string, envPath string, composeFiles []string) (*EnvironmentSnapshot, []string, error) {
 	var warnings []string
 
 	if envPath == "" {
@@ -204,7 +204,7 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 	var dockerErr error
 	dockerCli, dockerErr = client.New(client.FromEnv)
 	if dockerErr == nil {
-		pingCtx, pingCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		pingCtx, pingCancel := context.WithTimeout(ctx, 2*time.Second)
 		_, dockerErr = dockerCli.Ping(pingCtx, client.PingOptions{})
 		pingCancel()
 	}
@@ -223,8 +223,8 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 	var containers client.ContainerListResult
 	var listErr error
 	if dockerCli != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		containers, listErr = dockerCli.ContainerList(ctx, client.ContainerListOptions{All: true})
+		listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		containers, listErr = dockerCli.ContainerList(listCtx, client.ContainerListOptions{All: true})
 		cancel()
 		if listErr != nil {
 			warnings = append(warnings, fmt.Sprintf("Failed to list Docker containers: %v", listErr))
@@ -309,8 +309,8 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 				state := string(matchedContainer.State)
 				status := ""
 
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				inspect, err := dockerCli.ContainerInspect(ctx, matchedContainer.ID, client.ContainerInspectOptions{})
+				inspectCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				inspect, err := dockerCli.ContainerInspect(inspectCtx, matchedContainer.ID, client.ContainerInspectOptions{})
 				cancel()
 
 				if err == nil {

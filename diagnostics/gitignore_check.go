@@ -49,7 +49,7 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 		return results
 	}
 
-	gitAvailable := isGitRepository(e.ConfigDir)
+	gitAvailable := isGitRepository(ctx, e.ConfigDir)
 
 	for _, path := range envFiles {
 		select {
@@ -150,8 +150,8 @@ func findEnvFiles(dir string) ([]string, error) {
 	return files, err
 }
 
-func isGitRepository(dir string) bool {
-	cmd := exec.Command("git", "rev-parse", "--is-inside-work-tree")
+func isGitRepository(ctx context.Context, dir string) bool {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--is-inside-work-tree")
 	cmd.Dir = dir
 	if err := cmd.Run(); err != nil {
 		return false

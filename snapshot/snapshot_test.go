@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -133,7 +134,7 @@ services:
 `
 	_ = os.WriteFile(composePath, []byte(composeContent), 0644)
 
-	snap, _, err := CreateSnapshot(tempDir, envPath, []string{composePath})
+	snap, _, err := CreateSnapshot(context.Background(), tempDir, envPath, []string{composePath})
 	if err != nil {
 		t.Fatalf("unexpected error creating snapshot: %v", err)
 	}

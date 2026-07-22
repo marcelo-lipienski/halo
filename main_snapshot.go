@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -59,7 +60,7 @@ func executeSnapshot(args []string) int {
 		return 1
 	}
 
-	snap, warnings, err := snapshot.CreateSnapshot(configDir, envFile, composeFiles)
+	snap, warnings, err := snapshot.CreateSnapshot(context.Background(), configDir, envFile, composeFiles)
 	if err != nil {
 		if !quiet {
 			if format == "json" {
@@ -158,7 +159,7 @@ func executeDiff(args []string) int {
 		return 1
 	}
 
-	newSnap, warnings, err := snapshot.CreateSnapshot(configDir, envFile, composeFiles)
+	newSnap, warnings, err := snapshot.CreateSnapshot(context.Background(), configDir, envFile, composeFiles)
 	if err != nil {
 		if !quiet {
 			if format == "json" {
