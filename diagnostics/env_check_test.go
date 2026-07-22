@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/marcelo-lipienski/halo/config"
 	"github.com/marcelo-lipienski/halo/output"
 )
 
