@@ -123,7 +123,7 @@ func RunDoctor(ctx context.Context, configDir string, compose *config.ComposeCon
 		_ = dockerCli.Close()
 	} else {
 		engineCheck.Status = output.CheckWarning
-		engineCheck.Error = fmt.Sprintf("Docker client creation failed: %v", dockerErr)
+		engineCheck.Error = fmt.Sprintf("Docker daemon is unreachable: %v", dockerErr)
 		engineCheck.Mitigation = "Ensure DOCKER_HOST env var is correct or Docker Desktop is running"
 	}
 	checks = append(checks, engineCheck)
