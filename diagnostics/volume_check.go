@@ -933,12 +933,16 @@ func isExternal(ext interface{}) bool {
 	return false
 }
 
-func fixPermissions(path string, perm os.FileMode) error {
+var fixPermissionsFunc = func(path string, perm os.FileMode) error {
 	if runtime.GOOS == "windows" {
 		cmd := exec.Command("icacls", path, "/grant", "Users:M")
 		return cmd.Run()
 	}
 	return os.Chmod(path, perm)
+}
+
+func fixPermissions(path string, perm os.FileMode) error {
+	return fixPermissionsFunc(path, perm)
 }
 
 func getPermissionMitigation(path string, isWrite bool, isDir bool) string {
