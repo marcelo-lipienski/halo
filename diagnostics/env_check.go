@@ -122,6 +122,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 	variablesCheckPassed := true
 	mismatchedTypesPassed := true
 
+	seenMissing := make(map[string]bool)
 	for _, ref := range refs {
 		select {
 		case <-ctx.Done():
@@ -134,6 +135,10 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 			})
 			return results
 		default:
+		}
+
+		if seenMissing[ref.ref.name] {
+			continue
 		}
 
 		// System env takes precedence over .env.
@@ -152,6 +157,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 			if ref.ref.hasDefault {
 				continue
 			}
+			seenMissing[ref.ref.name] = true
 			variablesCheckPassed = false
 			results = append(results, output.CheckResult{
 				Group:      "Environmental Alignment",
@@ -163,6 +169,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 		} else if val == "" {
 			if ref.ref.required {
 				// Required non-empty variable check. See ADR-0003.
+				seenMissing[ref.ref.name] = true
 				variablesCheckPassed = false
 				results = append(results, output.CheckResult{
 					Group:      "Environmental Alignment",
@@ -173,6 +180,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 				})
 			} else if !ref.ref.hasDefault {
 				// Warn on empty variable without default. See ADR-0003.
+				seenMissing[ref.ref.name] = true
 				mismatchedTypesPassed = false
 				results = append(results, output.CheckResult{
 					Group:      "Environmental Alignment",

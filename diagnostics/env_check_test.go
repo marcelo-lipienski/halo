@@ -80,3 +80,34 @@ func TestCheckEnvExampleDrift(t *testing.T) {
 		t.Errorf("expected warning for extra keys, got: %+v", res[1])
 	}
 }
+
+func TestCheckEnvironmentalAlignmentDuplicateRef(t *testing.T) {
+	engine := &Engine{
+		ConfigDir: t.TempDir(),
+		Compose: config.ComposeConfig{
+			Services: map[string]config.ComposeService{
+				"web": {
+					Environment: map[string]string{"DATABASE_URL": ""},
+				},
+				"api": {
+					Environment: map[string]string{"DATABASE_URL": ""},
+				},
+			},
+		},
+		Env: map[string]string{},
+	}
+
+	results := engine.checkEnvironmentalAlignment(t.Context())
+
+	missingCount := 0
+	for _, res := range results {
+		if res.Name == "Variable DATABASE_URL missing" {
+			missingCount++
+		}
+	}
+
+	if missingCount != 1 {
+		t.Fatalf("expected exactly 1 result for missing DATABASE_URL, got %d", missingCount)
+	}
+}
+
