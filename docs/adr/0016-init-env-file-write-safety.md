@@ -1,7 +1,7 @@
 # 16. Init Env File Write Safety and Error Propagation
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 In `init/init.go`, `MergeEnvFiles` appends environment variables from template `.env.example` files to target `.env` files. During string write operations (`os.WriteString`) and offset seeks (`Seek`), return errors are ignored (`_, _ = out.WriteString(...)`). In scenarios with disk space exhaustion, read-only filesystems, or permission errors, this results in silent file corruption or partial appends without notifying the user or caller.

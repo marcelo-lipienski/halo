@@ -146,24 +146,40 @@ func MergeEnvFiles(examplePath, targetPath string, dryRun bool) (Result, error) 
 				}()
 
 				info, err := os.Stat(targetPath)
-				if err == nil && info.Size() > 0 {
+				if err != nil {
+					return result, err
+				}
+				if info.Size() > 0 {
 					f, err := os.Open(targetPath)
-					if err == nil {
-						if _, errSeek := f.Seek(-1, io.SeekEnd); errSeek == nil {
-							b := make([]byte, 1)
-							if _, errRead := f.Read(b); errRead == nil {
-								if b[0] != '\n' {
-									_, _ = out.WriteString("\n")
-								}
-							}
-						}
+					if err != nil {
+						return result, err
+					}
+					if _, errSeek := f.Seek(-1, io.SeekEnd); errSeek != nil {
 						_ = f.Close()
+						return result, fmt.Errorf("failed to seek target file: %w", errSeek)
+					}
+					b := make([]byte, 1)
+					if _, errRead := f.Read(b); errRead != nil {
+						_ = f.Close()
+						return result, fmt.Errorf("failed to read last byte from target file: %w", errRead)
+					}
+					if errClose := f.Close(); errClose != nil {
+						return result, fmt.Errorf("failed to close target file: %w", errClose)
+					}
+					if b[0] != '\n' {
+						if _, errWrite := out.WriteString("\n"); errWrite != nil {
+							return result, fmt.Errorf("failed to write newline to target file: %w", errWrite)
+						}
 					}
 				}
 
-				_, _ = out.WriteString("\n# Added by halo init\n")
+				if _, errWrite := out.WriteString("\n# Added by halo init\n"); errWrite != nil {
+					return result, fmt.Errorf("failed to write header to target file: %w", errWrite)
+				}
 				for _, l := range linesToAdd {
-					_, _ = out.WriteString(l + "\n")
+					if _, errWrite := out.WriteString(l + "\n"); errWrite != nil {
+						return result, fmt.Errorf("failed to write line to target file: %w", errWrite)
+					}
 				}
 			}
 		} else {
@@ -175,7 +191,9 @@ func MergeEnvFiles(examplePath, targetPath string, dryRun bool) (Result, error) 
 				_ = out.Close()
 			}()
 			for _, l := range linesToAdd {
-				_, _ = out.WriteString(l + "\n")
+				if _, errWrite := out.WriteString(l + "\n"); errWrite != nil {
+					return result, fmt.Errorf("failed to write line to target file: %w", errWrite)
+				}
 			}
 		}
 	}
