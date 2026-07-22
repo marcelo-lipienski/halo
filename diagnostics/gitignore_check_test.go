@@ -139,7 +139,7 @@ func TestFindEnvFilesNamingPatterns(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(tmpDir, ".env-sample"), []byte(""), 0644)
 	_ = os.WriteFile(filepath.Join(tmpDir, ".env_template"), []byte(""), 0644)
 
-	files, err := findEnvFiles(tmpDir)
+	files, err := findEnvFiles(context.Background(), tmpDir)
 	if err != nil {
 		t.Fatalf("unexpected error finding env files: %v", err)
 	}
@@ -157,3 +157,35 @@ func TestFindEnvFilesNamingPatterns(t *testing.T) {
 		t.Errorf("expected example/sample/template files to be ignored, got: %v", files)
 	}
 }
+
+func TestCheckGitignoreSecurityContextCancellation(t *testing.T) {
+	tmpDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(tmpDir, ".env"), []byte("SECRET=1"), 0644)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	e := &Engine{
+		ConfigDir: tmpDir,
+		Compose:   &config.ComposeConfig{},
+		Env:       map[string]string{},
+	}
+
+	results := e.CheckGitignoreSecurity(ctx)
+	if len(results) == 0 {
+		t.Fatal("expected at least 1 result for cancelled context")
+	}
+
+	cancelled := false
+	for _, r := range results {
+		if r.Status == output.CheckFailed && r.Name == "Check Timeout" {
+			cancelled = true
+			break
+		}
+	}
+
+	if !cancelled {
+		t.Errorf("expected cancellation error result, got: %+v", results)
+	}
+}
+
