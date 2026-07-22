@@ -23,30 +23,31 @@ func ParseBytes(val string) (uint64, error) {
 	var numStr string
 	var unit string
 	for i, c := range val {
-		if c >= '0' && c <= '9' {
+		if (c >= '0' && c <= '9') || c == '.' {
 			numStr += string(c)
 		} else {
 			unit = val[i:]
 			break
 		}
 	}
-	num, err := strconv.ParseUint(numStr, 10, 64)
+	num, err := strconv.ParseFloat(numStr, 64)
 	if err != nil {
 		return 0, err
 	}
+	var mult float64 = 1
 	switch unit {
 	case "b", "":
-		return num, nil
+		mult = 1
 	case "k", "kb", "kib", "ki":
-		return num * 1024, nil
+		mult = 1024
 	case "m", "mb", "mib", "mi":
-		return num * 1024 * 1024, nil
+		mult = 1024 * 1024
 	case "g", "gb", "gib", "gi":
-		return num * 1024 * 1024 * 1024, nil
+		mult = 1024 * 1024 * 1024
 	case "t", "tb", "tib", "ti":
-		return num * 1024 * 1024 * 1024 * 1024, nil
+		mult = 1024 * 1024 * 1024 * 1024
 	}
-	return num, nil
+	return uint64(num * mult), nil
 }
 
 // FormatBytes formats bytes to human-readable string.
