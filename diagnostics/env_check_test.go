@@ -85,7 +85,7 @@ func TestCheckEnvExampleDrift(t *testing.T) {
 func TestCheckEnvironmentalAlignmentDuplicateRef(t *testing.T) {
 	engine := &Engine{
 		ConfigDir: t.TempDir(),
-		Compose: config.ComposeConfig{
+		Compose: &config.ComposeConfig{
 			Services: map[string]config.ComposeService{
 				"web": {
 					Environment: map[string]string{"DATABASE_URL": ""},
