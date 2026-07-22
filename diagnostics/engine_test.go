@@ -1153,9 +1153,13 @@ func TestParseHostPortProto(t *testing.T) {
 		{"127.0.0.1:8080:80/udp", "8080", "udp"},
 		{"[::1]:8080:80", "8080", "tcp"},
 		{"[::1]:8080:80/udp", "8080", "udp"},
-		{"80", "", "tcp"},
-		{"[::1]:80", "", "tcp"},
+		{"80", "80", "tcp"},
+		{"80/tcp", "80", "tcp"},
+		{"80/udp", "80", "udp"},
+		{"[::1]:80", "80", "tcp"},
+		{"[::1]:80/udp", "80", "udp"},
 		{"8080-8085:80-85", "8080-8085", "tcp"},
+		{"8080-8085", "8080-8085", "tcp"},
 		{"[::1]:8080-8085:80-85", "8080-8085", "tcp"},
 	}
 
@@ -1167,6 +1171,14 @@ func TestParseHostPortProto(t *testing.T) {
 					tc.input, port, proto, tc.expectedPort, tc.expectedProto)
 			}
 		})
+	}
+}
+
+func BenchmarkParseHostPortProto(b *testing.B) {
+	inputs := []string{"8080:80", "127.0.0.1:8080:80/udp", "80", "80/tcp", "[::1]:80"}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = ParseHostPortProto(inputs[i%len(inputs)])
 	}
 }
 

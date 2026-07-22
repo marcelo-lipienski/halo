@@ -38,8 +38,10 @@ func ParseHostPortProto(p string) (string, string) {
 		if closeBracketIdx != -1 && len(p) > closeBracketIdx+1 && p[closeBracketIdx+1] == ':' {
 			remainder := p[closeBracketIdx+2:]
 			parts := strings.Split(remainder, ":")
-			if len(parts) == 2 {
-				return parts[0], proto
+			if len(parts) == 2 || len(parts) == 1 {
+				if parts[0] != "" {
+					return parts[0], proto
+				}
 			}
 			return "", proto
 		}
@@ -49,8 +51,11 @@ func ParseHostPortProto(p string) (string, string) {
 	switch len(parts) {
 	case 3:
 		return parts[1], proto
-	case 2:
-		return parts[0], proto
+	case 2, 1:
+		if parts[0] != "" {
+			return parts[0], proto
+		}
+		return "", proto
 	default:
 		return "", proto
 	}
