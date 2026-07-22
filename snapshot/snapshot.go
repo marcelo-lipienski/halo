@@ -267,6 +267,8 @@ func CreateSnapshot(configDir string, envPath string, composeFiles []string) (*E
 				if strings.Contains(targetPort, "/") {
 					targetPort = strings.Split(targetPort, "/")[0]
 				}
+			} else if len(pParts) == 1 {
+				targetPort = strings.Split(pParts[0], "/")[0]
 			}
 
 			for _, p := range ports {
