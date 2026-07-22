@@ -255,10 +255,12 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 
 	// 1. Volumes check
 	var svcNames []string
-	for name := range e.Compose.Services {
-		svcNames = append(svcNames, name)
+	if e.Compose != nil {
+		for name := range e.Compose.Services {
+			svcNames = append(svcNames, name)
+		}
+		sort.Strings(svcNames)
 	}
-	sort.Strings(svcNames)
 
 	for _, svcName := range svcNames {
 		svc := e.Compose.Services[svcName]
@@ -442,10 +444,12 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 
 	// 2. Secrets check
 	var secNames []string
-	for name := range e.Compose.Secrets {
-		secNames = append(secNames, name)
+	if e.Compose != nil {
+		for name := range e.Compose.Secrets {
+			secNames = append(secNames, name)
+		}
+		sort.Strings(secNames)
 	}
-	sort.Strings(secNames)
 
 	for _, secName := range secNames {
 		sec := e.Compose.Secrets[secName]
@@ -583,10 +587,12 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 
 	// 3. Configs check
 	var cfgNames []string
-	for name := range e.Compose.Configs {
-		cfgNames = append(cfgNames, name)
+	if e.Compose != nil {
+		for name := range e.Compose.Configs {
+			cfgNames = append(cfgNames, name)
+		}
+		sort.Strings(cfgNames)
 	}
-	sort.Strings(cfgNames)
 
 	for _, cfgName := range cfgNames {
 		cfg := e.Compose.Configs[cfgName]

@@ -141,11 +141,13 @@ func (e *Engine) getSensitiveValues() []string {
 	}
 
 	// Scan service env files.
-	for _, svc := range e.Compose.Services {
-		svcEnv := e.loadServiceEnvFiles(svc)
-		for k, v := range svcEnv {
-			if isSensitiveKey(k) && v != "" && len(v) > 2 {
-				values = append(values, v)
+	if e.Compose != nil {
+		for _, svc := range e.Compose.Services {
+			svcEnv := e.loadServiceEnvFiles(svc)
+			for k, v := range svcEnv {
+				if isSensitiveKey(k) && v != "" && len(v) > 2 {
+					values = append(values, v)
+				}
 			}
 		}
 	}

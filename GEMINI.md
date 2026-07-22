@@ -3,6 +3,7 @@
 ## 1. Stack & Standards
 - Go ^1.26, Docker (daemon check), prioritize standard library.
 - Idiomatic Go: propagate `context.Context`, wrap errors (`errors.Join`), AST-based expansion (`mvdan.cc/sh/v3`).
+- Defensive Engine execution: Always check for nil `*config.ComposeConfig` in diagnostic handlers before accessing services, secrets, or configs.
 
 ## 2. Testing & Quality
 - Test-First (TDD): Table-driven tests, benchmark tests (`func Benchmark...`).

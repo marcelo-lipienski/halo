@@ -19,6 +19,9 @@ type svcEnvRef struct {
 
 func (e *Engine) extractReferencedEnvVars() []svcEnvRef {
 	var refs []svcEnvRef
+	if e.Compose == nil {
+		return refs
+	}
 
 	// Sort service names.
 	var svcNames []string
@@ -146,7 +149,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 		if !exists {
 			val, exists = e.Env[ref.ref.name]
 		}
-		if !exists && ref.serviceName != "" {
+		if !exists && ref.serviceName != "" && e.Compose != nil {
 			svc := e.Compose.Services[ref.serviceName]
 			svcEnv := e.loadServiceEnvFiles(svc)
 			val, exists = svcEnv[ref.ref.name]
@@ -242,7 +245,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 				} else if v, ok := e.Env[key]; ok {
 					val = v
 					exists = true
-				} else {
+				} else if e.Compose != nil {
 					// Check in service env_file.
 					for _, svc := range e.Compose.Services {
 						svcEnv := e.loadServiceEnvFiles(svc)
