@@ -22,6 +22,9 @@ func TestParseBytes(t *testing.T) {
 		{"1TiB", 1 * 1024 * 1024 * 1024 * 1024, false},
 		{"50Mi", 50 * 1024 * 1024, false},
 		{"100b", 100, false},
+		{"1.5g", uint64(1.5 * 1024 * 1024 * 1024), false},
+		{"500.5mb", uint64(500.5 * 1024 * 1024), false},
+		{"0.5GiB", uint64(0.5 * 1024 * 1024 * 1024), false},
 		{"", 0, false},
 		{"50", 50, false},
 	}
