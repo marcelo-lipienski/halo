@@ -28,8 +28,18 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 		return results
 	}
 
-	envFiles, err := findEnvFiles(e.ConfigDir)
+	envFiles, err := findEnvFiles(ctx, e.ConfigDir)
 	if err != nil {
+		if ctx.Err() != nil {
+			results = append(results, output.CheckResult{
+				Group:      "Security Audits",
+				Name:       "Check Timeout",
+				Status:     output.CheckFailed,
+				Error:      fmt.Sprintf("Gitignore check was cancelled: %v", ctx.Err()),
+				Mitigation: "Verify system resources and responsiveness.",
+			})
+			return results
+		}
 		results = append(results, output.CheckResult{
 			Group:      "Security Audits",
 			Name:       "Env Files Discovery",
@@ -101,7 +111,7 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 			}
 		} else {
 			// Fallback custom ignore parser.
-			ignored, _ = isIgnoredCustom(path, e.ConfigDir)
+			ignored, _ = isIgnoredCustom(ctx, path, e.ConfigDir)
 		}
 
 		if !ignored {
@@ -124,9 +134,12 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 	return results
 }
 
-func findEnvFiles(dir string) ([]string, error) {
+func findEnvFiles(ctx context.Context, dir string) ([]string, error) {
 	var files []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if err != nil {
 			return nil
 		}
@@ -159,7 +172,10 @@ func isGitRepository(ctx context.Context, dir string) bool {
 	return true
 }
 
-func isIgnoredCustom(filePath string, configDir string) (bool, error) {
+func isIgnoredCustom(ctx context.Context, filePath string, configDir string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	absFile, err := filepath.Abs(filePath)
 	if err != nil {
 		return false, err
@@ -174,6 +190,9 @@ func isIgnoredCustom(filePath string, configDir string) (bool, error) {
 	var gitignores []string
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
 		ignoreFile := filepath.Join(currentDir, ".gitignore")
 		if stat, err := os.Stat(ignoreFile); err == nil && !stat.IsDir() {
 			gitignores = append([]string{ignoreFile}, gitignores...) // Prepend parents first.
@@ -186,6 +205,9 @@ func isIgnoredCustom(filePath string, configDir string) (bool, error) {
 
 	ignored := false
 	for _, ignorePath := range gitignores {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
 		file, err := os.Open(ignorePath)
 		if err != nil {
 			continue
@@ -202,6 +224,10 @@ func isIgnoredCustom(filePath string, configDir string) (bool, error) {
 		relPath = filepath.ToSlash(relPath)
 
 		for scanner.Scan() {
+			if err := ctx.Err(); err != nil {
+				_ = file.Close()
+				return false, err
+			}
 			line := scanner.Text()
 			matches, err := matchGitignorePattern(line, relPath)
 			if err == nil && matches {
