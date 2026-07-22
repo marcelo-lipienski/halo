@@ -65,31 +65,24 @@ func ParseHostPortProto(p string) (string, string) {
 const portRangeWarnThreshold = 64
 
 func CheckSinglePortCollision(hostPort string, proto string) bool {
+	addrs := []string{"127.0.0.1", "0.0.0.0", "[::1]", "[::]"}
 	if proto == "udp" {
-		l, err := net.ListenPacket("udp", "127.0.0.1:"+hostPort)
+		for _, addr := range addrs {
+			l, err := net.ListenPacket("udp", addr+":"+hostPort)
+			if err != nil {
+				return true
+			}
+			_ = l.Close()
+		}
+		return false
+	}
+	for _, addr := range addrs {
+		l, err := net.Listen("tcp", addr+":"+hostPort)
 		if err != nil {
 			return true
 		}
 		_ = l.Close()
-
-		l2, err2 := net.ListenPacket("udp", "0.0.0.0:"+hostPort)
-		if err2 != nil {
-			return true
-		}
-		_ = l2.Close()
-		return false
 	}
-	l, err := net.Listen("tcp", "127.0.0.1:"+hostPort)
-	if err != nil {
-		return true
-	}
-	_ = l.Close()
-
-	l2, err2 := net.Listen("tcp", "0.0.0.0:"+hostPort)
-	if err2 != nil {
-		return true
-	}
-	_ = l2.Close()
 	return false
 }
 
