@@ -6,6 +6,7 @@
 - Defensive Engine execution: Always check for nil `*config.ComposeConfig` in diagnostic handlers before accessing services, secrets, or configs.
 - Context Cancellation: Check `ctx.Err()` at loop boundaries during file scanning, hashing, and service port inspection to ensure prompt cancellation in long-running I/O operations.
 - Multi-stage Dockerfiles: Pre-scan stage aliases (`AS <alias>`) in a first pass before auditing base image mutability to handle forward and out-of-order stage references.
+- OS Test Hooks: Wrap OS-dependent command calls (`icacls`, `chmod`, `lsof`, `ss`, `netstat`) in package-level function variables (`fixPermissionsFunc`, `getOccupyingProcessFunc`) to enable deterministic unit testing.
 
 ## 2. Testing & Quality
 - Test-First (TDD): Table-driven tests, benchmark tests (`func Benchmark...`).
