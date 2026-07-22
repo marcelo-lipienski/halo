@@ -226,3 +226,38 @@ FROM golang:1.20-alpine
 		t.Errorf("expected check to pass, got %s. Error: %s", results2[0].Status, results2[0].Error)
 	}
 }
+
+func TestCheckDockerfileMultiStageForwardAlias(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Multi-stage Dockerfile referencing pinned base images and stage alias declared later
+	dockerfileContent := `
+FROM builder AS app
+FROM golang:1.22.0-alpine AS builder
+RUN echo "building"
+`
+	if err := os.WriteFile(filepath.Join(tempDir, "Dockerfile.multistage"), []byte(dockerfileContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	comp := &config.ComposeConfig{
+		Services: map[string]config.ComposeService{
+			"app": {
+				Build: config.ComposeBuild{
+					Context:    ".",
+					Dockerfile: "Dockerfile.multistage",
+				},
+			},
+		},
+	}
+
+	engine := NewEngine(tempDir, filepath.Join(tempDir, "docker-compose.yml"), nil, comp, nil)
+	results := engine.CheckImageTags()
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Status != output.CheckPassed {
+		t.Errorf("expected multi-stage check to pass, got %s. Error: %s", results[0].Status, results[0].Error)
+	}
+}

@@ -118,8 +118,28 @@ func (e *Engine) checkDockerfile(serviceName string, build config.ComposeBuild) 
 
 	lines := strings.Split(string(data), "\n")
 	stageAliases := make(map[string]bool)
-	var warnings []string
 
+	// Pass 1: Collect all stage aliases defined across multi-stage build FROM lines.
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		words := strings.Fields(line)
+		if len(words) < 2 || strings.ToUpper(words[0]) != "FROM" {
+			continue
+		}
+		for i := 1; i < len(words); i++ {
+			if strings.ToUpper(words[i]) == "AS" && i+1 < len(words) {
+				alias := strings.ToLower(words[i+1])
+				stageAliases[alias] = true
+				break
+			}
+		}
+	}
+
+	// Pass 2: Audit base image mutability for non-alias base images.
+	var warnings []string
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "#") {
@@ -132,27 +152,16 @@ func (e *Engine) checkDockerfile(serviceName string, build config.ComposeBuild) 
 		}
 
 		var image string
-		var imageIdx int
-		for idx, word := range words[1:] {
+		for _, word := range words[1:] {
 			if strings.HasPrefix(word, "--") {
 				continue
 			}
 			image = word
-			imageIdx = idx + 1
 			break
 		}
 
 		if image == "" {
 			continue
-		}
-
-		// Track multi-stage stage aliases.
-		for i := imageIdx + 1; i < len(words); i++ {
-			if strings.ToUpper(words[i]) == "AS" && i+1 < len(words) {
-				alias := strings.ToLower(words[i+1])
-				stageAliases[alias] = true
-				break
-			}
 		}
 
 		if stageAliases[strings.ToLower(image)] {
