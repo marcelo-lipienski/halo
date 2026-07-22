@@ -308,3 +308,139 @@ func TestDiffEdgeCases(t *testing.T) {
 			hasHealthChanged, hasImageChanged, hasAddedContainer, hasRemovedContainer)
 	}
 }
+
+func TestRenderTextFull(t *testing.T) {
+	now := time.Now()
+
+	// 1. Test empty diff (no changes)
+	emptyDiff := &EnvironmentDiff{Project: "test"}
+	var bufEmpty bytes.Buffer
+	RenderText(&bufEmpty, emptyDiff, now)
+	if !bytes.Contains(bufEmpty.Bytes(), []byte("Environment matches snapshot exactly")) {
+		t.Errorf("expected exact match message in RenderText empty diff output: %s", bufEmpty.String())
+	}
+
+	// 2. Test full diff rendering all branches (added/removed/modified for files, vars, containers, ports)
+	oldSnap := &EnvironmentSnapshot{
+		CreatedAt: now,
+		Files: map[string]FileSnapshot{
+			"f1.txt": {Path: "f1.txt", Size: 10, Hash: "h1"},
+			"f2.txt": {Path: "f2.txt", Size: 20, Hash: "h2"},
+		},
+		Variables: map[string]map[string]string{
+			".env": {"V1": "val1", "V2": "val2"},
+		},
+		Services: map[string]ContainerSnapshot{
+			"web": {State: "running", Status: "", Image: "nginx:1.0", ImageID: "img1"},
+			"db":  {State: "running", Status: "healthy", Image: "pg:14", ImageID: "img2"},
+		},
+		Ports: []PortSnapshot{
+			{Service: "web", HostPort: "8000-8005", Protocol: "tcp", IsOccupied: true, ProcessName: "app", PID: 123},
+			{Service: "db", HostPort: "5432", Protocol: "tcp", IsOccupied: false},
+		},
+	}
+	newSnap := &EnvironmentSnapshot{
+		CreatedAt: now.Add(time.Minute),
+		Files: map[string]FileSnapshot{
+			"f2.txt": {Path: "f2.txt", Size: 25, Hash: "h2-mod"},
+			"f3.txt": {Path: "f3.txt", Size: 30, Hash: "h3"},
+		},
+		Variables: map[string]map[string]string{
+			".env": {"V2": "val2-mod", "V3": "val3"},
+		},
+		Services: map[string]ContainerSnapshot{
+			"web":   {State: "exited", Status: "unhealthy", Image: "nginx:2.0", ImageID: "img1-mod"},
+			"cache": {State: "running", Status: "healthy", Image: "redis:alpine", ImageID: "img3"},
+		},
+		Ports: []PortSnapshot{
+			{Service: "web", HostPort: "8000-8005", Protocol: "tcp", IsOccupied: false},
+			{Service: "cache", HostPort: "6379", Protocol: "tcp", IsOccupied: true, ProcessName: "redis", PID: 456},
+		},
+	}
+
+	diff := Diff(oldSnap, newSnap)
+	var bufFull bytes.Buffer
+	RenderText(&bufFull, diff, now)
+	out := bufFull.String()
+
+	expectedSubstrings := []string{
+		"[Configuration Files]",
+		"f1.txt (removed)",
+		"f2.txt (modified)",
+		"f3.txt (added)",
+		"[Environment Variables]",
+		"V1: removed",
+		"V2: modified",
+		"V3: added",
+		"[Services & Containers]",
+		"Service db: container removed",
+		"Service cache: container added",
+		"Service web: container modified",
+		"State:  running -> exited",
+		"Health: none -> unhealthy",
+		"Image:  nginx:1.0 -> nginx:2.0",
+		"[Ports]",
+		"Port 8000-8005",
+		"Port 6379",
+	}
+
+	for _, sub := range expectedSubstrings {
+		if !bytes.Contains(bufFull.Bytes(), []byte(sub)) {
+			t.Errorf("RenderText output missing expected substring %q. Full output:\n%s", sub, out)
+		}
+	}
+}
+
+func TestCreateSnapshotEdgeCases(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Missing env file and missing compose file handling
+	snap, _, err := CreateSnapshot(context.Background(), tempDir, filepath.Join(tempDir, "nonexistent.env"), []string{filepath.Join(tempDir, "nonexistent-compose.yml")})
+	if err != nil {
+		t.Fatalf("CreateSnapshot should not return error for missing optional files: %v", err)
+	}
+	if snap == nil {
+		t.Fatal("expected non-nil snapshot")
+	}
+
+	// Default compose detection (no compose files parameter passed)
+	composePathYml := filepath.Join(tempDir, "docker-compose.yml")
+	overridePathYml := filepath.Join(tempDir, "docker-compose.override.yml")
+	_ = os.WriteFile(composePathYml, []byte("services:\n  app:\n    image: nginx\n"), 0644)
+	_ = os.WriteFile(overridePathYml, []byte("services:\n  app:\n    ports:\n      - \"8000-8005:8000-8005\"\n"), 0644)
+
+	snapDefault, _, errDefault := CreateSnapshot(context.Background(), tempDir, "", nil)
+	if errDefault != nil {
+		t.Fatalf("unexpected error in default CreateSnapshot: %v", errDefault)
+	}
+	if _, ok := snapDefault.Files["docker-compose.yml"]; !ok {
+		t.Error("expected docker-compose.yml in default snapshot")
+	}
+	if _, ok := snapDefault.Files["docker-compose.override.yml"]; !ok {
+		t.Error("expected docker-compose.override.yml in default snapshot")
+	}
+}
+
+func TestPortRangeDiff(t *testing.T) {
+	now := time.Now()
+	oldSnap := &EnvironmentSnapshot{
+		CreatedAt: now,
+		Ports: []PortSnapshot{
+			{Service: "app", HostPort: "8000-8005", Protocol: "tcp", IsOccupied: false},
+		},
+	}
+	newSnap := &EnvironmentSnapshot{
+		CreatedAt: now.Add(time.Minute),
+		Ports: []PortSnapshot{
+			{Service: "app", HostPort: "8000-8005", Protocol: "tcp", IsOccupied: true, ProcessName: "node", PID: 999},
+		},
+	}
+
+	diff := Diff(oldSnap, newSnap)
+	if len(diff.Ports) != 1 {
+		t.Fatalf("expected 1 port diff, got %d", len(diff.Ports))
+	}
+	if diff.Ports[0].Port != "8000-8005" || diff.Ports[0].Change != "status_changed" {
+		t.Errorf("unexpected port diff: %+v", diff.Ports[0])
+	}
+}
