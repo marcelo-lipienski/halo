@@ -143,10 +143,12 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 
 	// Sort services for deterministic checks.
 	var svcNames []string
-	for name := range e.Compose.Services {
-		svcNames = append(svcNames, name)
+	if e.Compose != nil {
+		for name := range e.Compose.Services {
+			svcNames = append(svcNames, name)
+		}
+		sort.Strings(svcNames)
 	}
-	sort.Strings(svcNames)
 
 	for _, svcName := range svcNames {
 		svc := e.Compose.Services[svcName]

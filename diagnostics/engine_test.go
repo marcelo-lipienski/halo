@@ -2525,3 +2525,12 @@ func TestCheckSinglePortCollision(t *testing.T) {
 		t.Errorf("expected port %s to collide when bound to IPv6 [::1], but got available", port)
 	}
 }
+
+func TestEngineRunWithNilCompose(t *testing.T) {
+	tempDir := t.TempDir()
+	engine := NewEngine(tempDir, filepath.Join(tempDir, "docker-compose.yml"), map[string]string{}, nil, nil)
+	report := engine.Run(context.Background())
+	if report == nil {
+		t.Fatal("expected non-nil report when running engine with nil compose config")
+	}
+}

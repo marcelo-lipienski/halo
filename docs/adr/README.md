@@ -11,7 +11,7 @@ Before modifying any package code, load the corresponding ADR context:
 | Package / Component | Related ADRs | Key Design Directives |
 | :--- | :--- | :--- |
 | `config` | [ADR-0003](0003-ast-config-parsing.md), [ADR-0013](0013-compose-merge-rules.md), [ADR-0015](0015-benchmark-test-coverage.md) | AST parsing via `mvdan.cc/sh/v3/expand`; deterministic override & merge precedence; benchmark coverage. |
-| `diagnostics` | [ADR-0004](0004-concurrent-diagnostic-lifecycle.md), [ADR-0005](0005-volume-permission-mitigation.md), [ADR-0006](0006-docker-api-graceful-degradation.md), [ADR-0011](0011-security-redaction-boundaries.md), [ADR-0015](0015-benchmark-test-coverage.md) | Concurrent execution in 4 groups; volume permission mitigation; Docker offline fallbacks; credential redaction; benchmark coverage. |
+| `diagnostics` | [ADR-0004](0004-concurrent-diagnostic-lifecycle.md), [ADR-0005](0005-volume-permission-mitigation.md), [ADR-0006](0006-docker-api-graceful-degradation.md), [ADR-0011](0011-security-redaction-boundaries.md), [ADR-0015](0015-benchmark-test-coverage.md), [ADR-0016](0016-nil-compose-config-guard.md) | Concurrent execution in 4 groups; volume permission mitigation; Docker offline fallbacks; credential redaction; benchmark coverage; nil compose guards. |
 | `doctor` | [ADR-0002](0002-cli-exit-boundaries.md), [ADR-0006](0006-docker-api-graceful-degradation.md) | Diagnose system constraints: resources, space, and CLI dependencies; Docker engine version checks. |
 | `snapshot` | [ADR-0010](0010-state-snapshot-drift-engine.md), [ADR-0015](0015-benchmark-test-coverage.md) | Collect system states into sorted JSON snapshots; benchmark coverage. |
 | `init` | [ADR-0002](0002-cli-exit-boundaries.md) | Merge `.env.example` templates into target `.env`. |
@@ -37,3 +37,4 @@ Before modifying any package code, load the corresponding ADR context:
 | `0013` | [Docker Compose Merge Semantics](0013-compose-merge-rules.md) | Merging precedence, environment merge, port combine, volume overrides | [0013-compose-merge-rules.md](0013-compose-merge-rules.md) |
 | `0014` | [UI & Logging Standard](0014-rendering-log-boundaries.md) | Stdout/stderr separation, ANSI color suppression, verbosity routing | [0014-rendering-log-boundaries.md](0014-rendering-log-boundaries.md) |
 | `0015` | [Benchmark Test Coverage for Performance Critical Paths](0015-benchmark-test-coverage.md) | Add Go benchmark functions for config parsing, diffing, and engine runs | [0015-benchmark-test-coverage.md](0015-benchmark-test-coverage.md) |
+| `0016` | [Nil Compose Config Guard for Diagnostics Engine](0016-nil-compose-config-guard.md) | Defensive nil ComposeConfig guards across diagnostics engine checks | [0016-nil-compose-config-guard.md](0016-nil-compose-config-guard.md) |
