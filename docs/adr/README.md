@@ -36,11 +36,6 @@ Before modifying any package code, load the corresponding ADR context:
 | `0012` | [Modular CLI Routing](0012-modular-cli-routing.md) | Subcommand separation, command handlers, code isolation | [0012-modular-cli-routing.md](0012-modular-cli-routing.md) |
 | `0013` | [Docker Compose Merge Semantics](0013-compose-merge-rules.md) | Merging precedence, environment merge, port combine, volume overrides | [0013-compose-merge-rules.md](0013-compose-merge-rules.md) |
 | `0014` | [UI & Logging Standard](0014-rendering-log-boundaries.md) | Stdout/stderr separation, ANSI color suppression, verbosity routing | [0014-rendering-log-boundaries.md](0014-rendering-log-boundaries.md) |
-| `0015` | [Volume Write Permission Auto-Fix & Diagnostic Verification](0015-volume-write-permission-fix.md) | Correct write auto-fix detection, propagate verification status | [0015-volume-write-permission-fix.md](0015-volume-write-permission-fix.md) |
-| `0016` | [Init Env File Write Safety and Error Propagation](0016-init-env-file-write-safety.md) | `.env` template write error handling & propagation | [0016-init-env-file-write-safety.md](0016-init-env-file-write-safety.md) |
-| `0017` | [Diagnostics Interactive Stdin Guard and Prompt Safety](0017-diagnostics-interactive-stdin-guard.md) | Stdin reader isolation, non-interactive mode guards | [0017-diagnostics-interactive-stdin-guard.md](0017-diagnostics-interactive-stdin-guard.md) |
-| `0018` | [Standardized Docker Daemon Ping Timeouts](0018-standardized-docker-daemon-ping-timeouts.md) | Uniform 2s Docker ping timeouts & degradation | [0018-standardized-docker-daemon-ping-timeouts.md](0018-standardized-docker-daemon-ping-timeouts.md) |
-| `0019` | [Test Suite Expansion for System Resource and Snapshot Edge Cases](0019-test-suite-expansion-doctor-snapshot.md) | Table-driven test expansion for `doctor` and `snapshot` | [0019-test-suite-expansion-doctor-snapshot.md](0019-test-suite-expansion-doctor-snapshot.md) |
 
 
 
