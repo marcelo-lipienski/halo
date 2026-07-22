@@ -2525,4 +2525,3 @@ func TestCheckSinglePortCollision(t *testing.T) {
 		t.Errorf("expected port %s to collide when bound to IPv6 [::1], but got available", port)
 	}
 }
-

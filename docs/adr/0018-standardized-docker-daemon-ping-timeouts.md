@@ -1,7 +1,7 @@
 # 18. Standardized Docker Daemon Ping Timeouts
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 Docker daemon health checks across `doctor/doctor.go`, `diagnostics/engine.go`, and `snapshot/snapshot.go` use inconsistent context timeouts (ranging from unbudgeted calls to 5s socket timeouts) and duplicate warning string formats when the Docker socket is offline or unresponsive.
