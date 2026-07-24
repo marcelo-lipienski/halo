@@ -41,10 +41,30 @@ halo check
 ```
 *(Running `halo` with no subcommands defaults to `halo check`)*
 
+### 3. Automatically Mitigate Issues
+Repair file permissions and missing directory structures:
+```bash
+halo fix
+```
+
+---
+
+## CLI Overview
+
+| Command | Description |
+| --- | --- |
+| `halo check` | Run the full diagnostic suite (default command). |
+| `halo fix` | Automatically mitigate configuration, file permission, and directory issues. |
+| `halo init` | Initialize or update `.env` from `.env.example`. |
+| `halo doctor` | Inspect host system prerequisites (Docker, memory, disk, PATH binaries). |
+| `halo snapshot [file]` | Capture a baseline state snapshot of the local environment. |
+| `halo diff [file]` | Compare current environment state against a saved snapshot. |
+| `halo version` | Display binary version, build commit SHA, and Go runtime details. |
+
 ---
 
 ## Advanced Usage
-For detailed instructions on advanced flags (such as `--watch`, `--fix`, or `--format json`), multi-file compose merging rules, and system-level diagnostics using `halo doctor`, please refer to:
+For detailed instructions on advanced flags (such as `--watch`, `--dry-run`, `--interactive`, or `--format json`), multi-file compose merging rules, and system-level diagnostics using `halo doctor`, please refer to:
 * [USAGE.md](USAGE.md)
 
 ---
