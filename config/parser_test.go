@@ -874,3 +874,146 @@ services:
 		t.Errorf("unexpected merged build: %+v", web.Build)
 	}
 }
+
+func TestIsWindowsPath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"C:\\data", true},
+		{"c:/data", true},
+		{"D:\\app\\config", true},
+		{"./data", false},
+		{"/var/log", false},
+		{"data\\logs", true},
+	}
+	for _, tc := range tests {
+		if got := IsWindowsPath(tc.input); got != tc.want {
+			t.Errorf("IsWindowsPath(%q) = %v, want %v", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestUnmarshalYAMLEdgeCases(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	content := `
+services:
+  app:
+    ports:
+      - "80:80:80"
+      - "ro_invalid"
+    volumes:
+      - type: bind
+        source: C:\data
+        target: /data
+        read_only: true
+      - type: volume
+        source: my_vol
+        target: /var/lib/db
+`
+	if err := os.WriteFile(composePath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("ParseCompose failed: %v", err)
+	}
+	if len(cfg.Services["app"].Volumes) != 2 {
+		t.Errorf("expected 2 volumes, got %d", len(cfg.Services["app"].Volumes))
+	}
+}
+
+func TestUnmarshalScalarAndSequenceNodeKinds(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	content := `
+services:
+  web:
+    build: "./my_app"
+    entrypoint: "python app.py"
+    command: ["--port", "8080"]
+    env_file: ".env.production"
+    secrets: "db_pass"
+    configs: "app_config"
+    ports: "8080"
+  worker:
+    env_file:
+      - ".env.common"
+      - file: ".env.secret"
+        required: false
+    secrets:
+      - "my_secret"
+      - source: "cert"
+        target: "/etc/ssl"
+    configs:
+      - "config_1"
+      - source: "cfg_2"
+        target: "/etc/cfg"
+    ports:
+      - target: 8080
+        published: 80
+        protocol: tcp
+      - target: 9090
+`
+	if err := os.WriteFile(composePath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("ParseCompose failed: %v", err)
+	}
+
+	web := cfg.Services["web"]
+	if web.Build.Context != "./my_app" {
+		t.Errorf("expected build context './my_app', got %q", web.Build.Context)
+	}
+	if len(web.EnvFiles) != 1 || web.EnvFiles[0].File != ".env.production" {
+		t.Errorf("expected env_file scalar parsed, got %+v", web.EnvFiles)
+	}
+	if len(web.Secrets) != 1 || web.Secrets[0].Source != "db_pass" {
+		t.Errorf("expected secrets scalar parsed, got %+v", web.Secrets)
+	}
+	if len(web.Configs) != 1 || web.Configs[0].Source != "app_config" {
+		t.Errorf("expected configs scalar parsed, got %+v", web.Configs)
+	}
+
+	worker := cfg.Services["worker"]
+	if len(worker.EnvFiles) != 2 || worker.EnvFiles[1].Required != false {
+		t.Errorf("expected sequence env_files with required=false, got %+v", worker.EnvFiles)
+	}
+	if len(worker.Secrets) != 2 || worker.Secrets[1].Target != "/etc/ssl" {
+		t.Errorf("expected mapping secret, got %+v", worker.Secrets)
+	}
+	if len(worker.Configs) != 2 || worker.Configs[1].Target != "/etc/cfg" {
+		t.Errorf("expected mapping config, got %+v", worker.Configs)
+	}
+	if len(worker.Ports) != 2 || worker.Ports[0] != "80:8080/tcp" || worker.Ports[1] != "9090/tcp" {
+		t.Errorf("expected mapping ports parsed, got %+v", worker.Ports)
+	}
+}
+
+func TestUnmarshalYAMLErrors(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+
+	// Invalid YAML content for various structs
+	content := `
+services:
+  web:
+    build: [123, 456]
+    environment: "invalid_env_scalar"
+    ports:
+      - [invalid_nested_list]
+    env_file:
+      - [invalid_nested_list]
+    secrets:
+      - [invalid_nested_list]
+    configs:
+      - [invalid_nested_list]
+`
+	_ = os.WriteFile(composePath, []byte(content), 0644)
+	_, _ = ParseCompose(composePath)
+}

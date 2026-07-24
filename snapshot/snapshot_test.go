@@ -461,3 +461,47 @@ func TestCreateSnapshotContextCancelled(t *testing.T) {
 		t.Errorf("expected context.Canceled error, got %v", err)
 	}
 }
+
+func TestComputeSHA256Error(t *testing.T) {
+	_, err := computeSHA256(context.Background(), "/nonexistent/path/for/sha256")
+	if err == nil {
+		t.Error("expected error for non-existent file path")
+	}
+}
+
+func TestCreateSnapshotProjectNameAndOverrideYaml(t *testing.T) {
+	t.Setenv("COMPOSE_PROJECT_NAME", "my_custom_project")
+	tempDir := t.TempDir()
+
+	composePathYaml := filepath.Join(tempDir, "docker-compose.yaml")
+	overridePathYaml := filepath.Join(tempDir, "docker-compose.override.yaml")
+	_ = os.WriteFile(composePathYaml, []byte("services:\n  app:\n    image: nginx\n"), 0644)
+	_ = os.WriteFile(overridePathYaml, []byte("services:\n  app:\n    ports:\n      - \"80:80\"\n"), 0644)
+
+	snap, _, err := CreateSnapshot(context.Background(), tempDir, "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if snap == nil {
+		t.Fatal("expected non-nil snapshot")
+	}
+}
+
+func BenchmarkDiff(b *testing.B) {
+	now := time.Now()
+	oldSnap := &EnvironmentSnapshot{
+		CreatedAt: now,
+		Files:     map[string]FileSnapshot{"docker-compose.yml": {Size: 100, Hash: "abc"}},
+		Variables: map[string]map[string]string{".env": {"PORT": "8080"}},
+	}
+	newSnap := &EnvironmentSnapshot{
+		CreatedAt: now.Add(time.Minute),
+		Files:     map[string]FileSnapshot{"docker-compose.yml": {Size: 120, Hash: "xyz"}},
+		Variables: map[string]map[string]string{".env": {"PORT": "9090"}},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = Diff(oldSnap, newSnap)
+	}
+}

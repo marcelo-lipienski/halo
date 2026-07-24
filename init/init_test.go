@@ -180,3 +180,35 @@ func TestMergeEnvFiles_MissingExample(t *testing.T) {
 		t.Error("expected error for missing example file")
 	}
 }
+
+func TestMergeEnvFilesEdgeCases(t *testing.T) {
+	tmpDir := t.TempDir()
+	examplePath := filepath.Join(tmpDir, ".env.example")
+	targetPath := filepath.Join(tmpDir, ".env")
+
+	// 1. Export syntax and quoted values
+	exampleContent := "export DB_HOST=\"localhost\"\nexport DB_PASS='secret'\n"
+	_ = os.WriteFile(examplePath, []byte(exampleContent), 0644)
+	_ = os.WriteFile(targetPath, []byte("EXISTING=1"), 0644) // no trailing newline
+
+	res, err := MergeEnvFiles(examplePath, targetPath, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(res.Added) != 2 {
+		t.Errorf("expected 2 keys added, got %d", len(res.Added))
+	}
+}
+
+func BenchmarkMergeEnvFiles(b *testing.B) {
+	tmpDir := b.TempDir()
+	exampleFile := filepath.Join(tmpDir, ".env.example")
+	targetFile := filepath.Join(tmpDir, ".env")
+	content := "DB_HOST=localhost\nDB_PORT=5432\nAPI_KEY=secret\n"
+	_ = os.WriteFile(exampleFile, []byte(content), 0644)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = MergeEnvFiles(exampleFile, targetFile, false)
+	}
+}

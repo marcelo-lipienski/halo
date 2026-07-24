@@ -3,6 +3,7 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 )
@@ -258,5 +259,56 @@ func TestRenderTextNoColorEnvVar(t *testing.T) {
 
 	if strings.Contains(buf.String(), "\033[") {
 		t.Errorf("expected no ANSI codes when NO_COLOR is set, got: %q", buf.String())
+	}
+}
+
+func TestColorize(t *testing.T) {
+	if got := Colorize("hello", "32", false); got != "hello" {
+		t.Errorf("expected 'hello', got %q", got)
+	}
+	if got := Colorize("hello", "32", true); got != "\033[32mhello\033[0m" {
+		t.Errorf("expected ANSI wrapped string, got %q", got)
+	}
+}
+
+func TestUseColorNoColor(t *testing.T) {
+	t.Setenv("NO_COLOR", "true")
+	var buf bytes.Buffer
+	if UseColor(&buf) {
+		t.Error("expected UseColor to return false when NO_COLOR is set")
+	}
+}
+
+func TestIsTTYWithFile(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "tty_test_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tmpFile.Close() }()
+
+	// A regular temp file is an *os.File but not a CharDevice (TTY), so UseColor returns false
+	if UseColor(tmpFile) {
+		t.Error("expected UseColor to return false for regular file")
+	}
+}
+
+func BenchmarkRenderText(b *testing.B) {
+	report := &DiagnosticsReport{
+		Status:     StatusHealthy,
+		DurationMs: 12,
+		Checks: []CheckResult{
+			{Group: "Security Audits", Name: "Check 1", Status: CheckPassed},
+			{Group: "Security Audits", Name: "Check 2", Status: CheckWarning, Error: "warn", Mitigation: "fix"},
+			{Group: "Volume Permissions", Name: "Check 3", Status: CheckFailed, Error: "err"},
+		},
+	}
+	var buf bytes.Buffer
+	buf.Grow(1024)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf.Reset()
+		RenderText(&buf, report, true)
 	}
 }

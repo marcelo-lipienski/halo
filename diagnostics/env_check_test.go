@@ -14,9 +14,10 @@ func TestCheckEnvExampleDrift(t *testing.T) {
 	tmpDir := t.TempDir()
 	envPath := filepath.Join(tmpDir, ".env")
 	examplePath := filepath.Join(tmpDir, ".env.example")
+	engine := &Engine{}
 
 	// 1. No .env.example
-	res, err := CheckEnvExampleDrift(envPath, examplePath)
+	res, err := engine.CheckEnvExampleDrift(envPath, examplePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +34,7 @@ func TestCheckEnvExampleDrift(t *testing.T) {
 	// 2. All keys present -> both checks pass
 	writeFile(examplePath, []byte("A=1\nB=2\n"))
 	writeFile(envPath, []byte("A=1\nB=2\n"))
-	res, err = CheckEnvExampleDrift(envPath, examplePath)
+	res, err = engine.CheckEnvExampleDrift(envPath, examplePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +44,7 @@ func TestCheckEnvExampleDrift(t *testing.T) {
 
 	// 3. Missing keys -> failure check
 	writeFile(envPath, []byte("A=1\n"))
-	res, err = CheckEnvExampleDrift(envPath, examplePath)
+	res, err = engine.CheckEnvExampleDrift(envPath, examplePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +58,7 @@ func TestCheckEnvExampleDrift(t *testing.T) {
 	// 4. Extra keys in .env -> warning check
 	writeFile(examplePath, []byte("A=1\n"))
 	writeFile(envPath, []byte("A=1\nB=2\n"))
-	res, err = CheckEnvExampleDrift(envPath, examplePath)
+	res, err = engine.CheckEnvExampleDrift(envPath, examplePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestCheckEnvExampleDrift(t *testing.T) {
 	// 5. Both missing and extra keys
 	writeFile(examplePath, []byte("A=1\nC=3\n"))
 	writeFile(envPath, []byte("A=1\nB=2\n"))
-	res, err = CheckEnvExampleDrift(envPath, examplePath)
+	res, err = engine.CheckEnvExampleDrift(envPath, examplePath)
 	if err != nil {
 		t.Fatal(err)
 	}

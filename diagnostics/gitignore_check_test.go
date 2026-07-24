@@ -226,3 +226,15 @@ func TestCheckGitignoreSecurityAutoFixAndDryRun(t *testing.T) {
 		t.Errorf("expected .gitignore to contain .env, got: %s", string(gitignoreContent))
 	}
 }
+
+func TestQuoteMetaByte(t *testing.T) {
+	chars := []byte{'+', '?', '.', '*', '^', '$', '(', ')', '[', ']', '{', '}', '|', '\\', 'a', '1'}
+	var buf strings.Builder
+	for _, c := range chars {
+		quoteMetaByte(&buf, c)
+	}
+	got := buf.String()
+	if !strings.Contains(got, "\\+") || !strings.Contains(got, "\\?") || !strings.Contains(got, "\\*") {
+		t.Errorf("quoteMetaByte failed to escape special characters, got %q", got)
+	}
+}

@@ -76,7 +76,7 @@ func RunDoctor(ctx context.Context, configDir string, compose *config.ComposeCon
 	checks = append(checks, checkDockerEngine(ctx))
 
 	// 3. Required CLI tools check.
-	checks = append(checks, checkRequiredTools([]string{"git", "make", "docker"}))
+	checks = append(checks, checkRequiredTools(ctx, []string{"git", "make", "docker"}))
 
 	// 4. System memory check.
 	memCheck := output.CheckResult{
@@ -211,13 +211,18 @@ func parseComposeVersionStr(raw string) string {
 	return versionStr
 }
 
-func checkRequiredTools(requiredTools []string) output.CheckResult {
+func checkRequiredTools(ctx context.Context, requiredTools []string) output.CheckResult {
 	toolsCheck := output.CheckResult{
 		Group: "System Prerequisites",
 		Name:  "Required CLI Tools",
 	}
 	var missingTools []string
 	for _, tool := range requiredTools {
+		if err := ctx.Err(); err != nil {
+			toolsCheck.Status = output.CheckFailed
+			toolsCheck.Error = fmt.Sprintf("Tool check cancelled: %v", err)
+			return toolsCheck
+		}
 		if _, err := exec.LookPath(tool); err != nil {
 			missingTools = append(missingTools, tool)
 		}

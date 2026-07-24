@@ -3,9 +3,10 @@ package snapshot
 import (
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"time"
+
+	"github.com/marcelo-lipienski/halo/output"
 )
 
 type FileDiff struct {
@@ -330,32 +331,11 @@ func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
 	return diff
 }
 
-// useColor returns true if color is enabled.
-func useColor(w io.Writer) bool {
-	if os.Getenv("NO_COLOR") != "" {
-		return false
-	}
-	f, ok := w.(*os.File)
-	if !ok {
-		return false
-	}
-	info, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (info.Mode() & os.ModeCharDevice) != 0
-}
 
-func colorize(s, ansi string, color bool) string {
-	if !color {
-		return s
-	}
-	return "\033[" + ansi + "m" + s + "\033[0m"
-}
 
 // RenderText writes the diff report in human-readable text format.
 func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
-	color := useColor(w)
+	color := output.UseColor(w)
 
 	fmt.Fprintln(w, "=== halo Snapshot Diff ===")
 	fmt.Fprintf(w, "Comparing current state against snapshot taken at: %s\n", oldCreatedAt.Format(time.RFC3339))
@@ -363,7 +343,7 @@ func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 	hasDiffs := len(diff.Files) > 0 || len(diff.Variables) > 0 || len(diff.Ports) > 0 || len(diff.Containers) > 0
 	if !hasDiffs {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, colorize("✓ Environment matches snapshot exactly. No changes detected.", "32", color))
+		fmt.Fprintln(w, output.Colorize("✓ Environment matches snapshot exactly. No changes detected.", "32", color))
 		return
 	}
 
@@ -374,11 +354,11 @@ func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 		for _, f := range diff.Files {
 			switch f.Change {
 			case "added":
-				fmt.Fprintf(w, "  %s %s (added)\n", colorize("+", "32", color), f.Path)
+				fmt.Fprintf(w, "  %s %s (added)\n", output.Colorize("+", "32", color), f.Path)
 			case "removed":
-				fmt.Fprintf(w, "  %s %s (removed)\n", colorize("-", "31", color), f.Path)
+				fmt.Fprintf(w, "  %s %s (removed)\n", output.Colorize("-", "31", color), f.Path)
 			case "modified":
-				fmt.Fprintf(w, "  %s %s (modified)\n", colorize("~", "33", color), f.Path)
+				fmt.Fprintf(w, "  %s %s (modified)\n", output.Colorize("~", "33", color), f.Path)
 			}
 		}
 	}
@@ -404,11 +384,11 @@ func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 			for _, v := range byFile[file] {
 				switch v.Change {
 				case "added":
-					fmt.Fprintf(w, "    %s %s: added (value: %q)\n", colorize("+", "32", color), v.Key, v.NewValue)
+					fmt.Fprintf(w, "    %s %s: added (value: %q)\n", output.Colorize("+", "32", color), v.Key, v.NewValue)
 				case "removed":
-					fmt.Fprintf(w, "    %s %s: removed (old value: %q)\n", colorize("-", "31", color), v.Key, v.OldValue)
+					fmt.Fprintf(w, "    %s %s: removed (old value: %q)\n", output.Colorize("-", "31", color), v.Key, v.OldValue)
 				case "modified":
-					fmt.Fprintf(w, "    %s %s: modified (%q -> %q)\n", colorize("~", "33", color), v.Key, v.OldValue, v.NewValue)
+					fmt.Fprintf(w, "    %s %s: modified (%q -> %q)\n", output.Colorize("~", "33", color), v.Key, v.OldValue, v.NewValue)
 				}
 			}
 		}
@@ -421,11 +401,11 @@ func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 		for _, c := range diff.Containers {
 			switch c.Change {
 			case "added":
-				fmt.Fprintf(w, "  %s Service %s: container added (state: %s, image: %s)\n", colorize("+", "32", color), c.Service, c.NewState, c.NewImage)
+				fmt.Fprintf(w, "  %s Service %s: container added (state: %s, image: %s)\n", output.Colorize("+", "32", color), c.Service, c.NewState, c.NewImage)
 			case "removed":
-				fmt.Fprintf(w, "  %s Service %s: container removed (was state: %s, image: %s)\n", colorize("-", "31", color), c.Service, c.OldState, c.OldImage)
+				fmt.Fprintf(w, "  %s Service %s: container removed (was state: %s, image: %s)\n", output.Colorize("-", "31", color), c.Service, c.OldState, c.OldImage)
 			default:
-				fmt.Fprintf(w, "  %s Service %s: container modified\n", colorize("~", "33", color), c.Service)
+				fmt.Fprintf(w, "  %s Service %s: container modified\n", output.Colorize("~", "33", color), c.Service)
 				if c.OldState != c.NewState {
 					fmt.Fprintf(w, "    State:  %s -> %s\n", c.OldState, c.NewState)
 				}
@@ -462,9 +442,9 @@ func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 						statusStr += fmt.Sprintf(" by %s (PID %d)", p.NewProcessName, p.NewPID)
 					}
 				}
-				fmt.Fprintf(w, "  %s Service %s, Port %s (%s): mapping added (status: %s)\n", colorize("+", "32", color), p.Service, p.Port, p.Protocol, statusStr)
+				fmt.Fprintf(w, "  %s Service %s, Port %s (%s): mapping added (status: %s)\n", output.Colorize("+", "32", color), p.Service, p.Port, p.Protocol, statusStr)
 			case "removed":
-				fmt.Fprintf(w, "  %s Service %s, Port %s (%s): mapping removed\n", colorize("-", "31", color), p.Service, p.Port, p.Protocol)
+				fmt.Fprintf(w, "  %s Service %s, Port %s (%s): mapping removed\n", output.Colorize("-", "31", color), p.Service, p.Port, p.Protocol)
 			case "status_changed":
 				oldStatus := "free"
 				if p.OldOccupied {
@@ -480,7 +460,7 @@ func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 						newStatus += fmt.Sprintf(" by %s (PID %d)", p.NewProcessName, p.NewPID)
 					}
 				}
-				fmt.Fprintf(w, "  %s Service %s, Port %s (%s): %s -> %s\n", colorize("~", "33", color), p.Service, p.Port, p.Protocol, oldStatus, newStatus)
+				fmt.Fprintf(w, "  %s Service %s, Port %s (%s): %s -> %s\n", output.Colorize("~", "33", color), p.Service, p.Port, p.Protocol, oldStatus, newStatus)
 			}
 		}
 	}
