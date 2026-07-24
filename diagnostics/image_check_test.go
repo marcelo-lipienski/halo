@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/marcelo-lipienski/halo/config"
@@ -108,7 +109,7 @@ func TestCheckImageTags(t *testing.T) {
 					t.Errorf("check %q status = %s, expected %s", res.Name, res.Status, expectedStatus)
 				}
 				if expectedErr, hasErr := tc.expectedErrors[res.Name]; hasErr {
-					if res.Error == "" || !contains(res.Error, expectedErr) {
+					if res.Error == "" || !strings.Contains(res.Error, expectedErr) {
 						t.Errorf("check %q error = %q, expected to contain %q", res.Name, res.Error, expectedErr)
 					}
 					if res.Mitigation == "" {
@@ -143,16 +144,6 @@ func TestEngineRunsImageTagsCheck(t *testing.T) {
 	if !hasImageCheck {
 		t.Error("expected report to execute image tag checks")
 	}
-}
-
-func contains(s, substr string) bool {
-	// simple helper to avoid importing strings
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 func TestCheckDockerfileImageTags(t *testing.T) {
@@ -193,7 +184,7 @@ RUN echo "hello"
 	if res.Status != output.CheckWarning {
 		t.Errorf("expected check status warning, got %s", res.Status)
 	}
-	if !contains(res.Error, "mutable base image(s) in Dockerfile: base image 'nginx:latest' (mutable tag 'latest')") {
+	if !strings.Contains(res.Error, "mutable base image(s) in Dockerfile: base image 'nginx:latest' (mutable tag 'latest')") {
 		t.Errorf("unexpected error message: %q", res.Error)
 	}
 

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/marcelo-lipienski/halo/config"
 	"github.com/marcelo-lipienski/halo/output"
 )
 
@@ -279,14 +280,7 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 			}
 
 			// Cross-platform path convention check.
-			isWindowsPath := false
-			if len(vol.Source) >= 2 {
-				drive := vol.Source[0]
-				isLetter := (drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z')
-				if (isLetter && vol.Source[1] == ':') || strings.Contains(vol.Source, "\\") {
-					isWindowsPath = true
-				}
-			}
+			isWindowsPath := config.IsWindowsPath(vol.Source)
 
 			if runtime.GOOS != "windows" && isWindowsPath {
 				volumeCheckPassed = false

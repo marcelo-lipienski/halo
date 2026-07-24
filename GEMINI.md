@@ -8,6 +8,7 @@
 - Multi-stage Dockerfiles: Pre-scan stage aliases (`AS <alias>`) in a first pass before auditing base image mutability to handle forward and out-of-order stage references.
 - OS Test Hooks: Wrap OS-dependent command calls (`icacls`, `chmod`, `lsof`, `ss`, `netstat`) in package-level function variables (`fixPermissionsFunc`, `getOccupyingProcessFunc`) to enable deterministic unit testing.
 - Auto-Mitigation Engine: Map dedicated remediation commands (`halo fix`) directly to `Engine.AutoFix` with persistent `--dry-run` (`-d`) preview capabilities.
+- Standard Library Helpers: Prefer standard library functions (`strings.Contains`, `slices.Contains`) over custom slice/string iteration helpers in test code.
 
 ## 2. Testing & Quality
 - Test-First (TDD): Table-driven tests, benchmark tests (`func Benchmark...`).

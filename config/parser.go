@@ -356,7 +356,8 @@ type ComposeVolume struct {
 	BaseDir  string // Directory where the compose file containing this volume is located
 }
 
-func isWindowsDrivePath(path string) bool {
+// IsWindowsDrivePath returns true if path starts with a drive letter (e.g. C:\ or c:/).
+func IsWindowsDrivePath(path string) bool {
 	if len(path) >= 2 {
 		drive := path[0]
 		isLetter := (drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z')
@@ -365,6 +366,11 @@ func isWindowsDrivePath(path string) bool {
 		}
 	}
 	return false
+}
+
+// IsWindowsPath returns true if path uses Windows drive letter or backslash conventions.
+func IsWindowsPath(path string) bool {
+	return IsWindowsDrivePath(path) || strings.Contains(path, "\\")
 }
 
 // UnmarshalYAML implements custom YAML decoding for volume mount configurations
@@ -412,7 +418,7 @@ func (cv *ComposeVolume) UnmarshalYAML(value *yaml.Node) error {
 				cv.Source = s
 				cv.Target = ""
 			}
-		} else if !strings.HasPrefix(cv.Source, "/") && !strings.HasPrefix(cv.Source, "./") && !strings.HasPrefix(cv.Source, "../") && cv.Source != "~" && cv.Source != "." && !isWindowsDrivePath(cv.Source) {
+		} else if !strings.HasPrefix(cv.Source, "/") && !strings.HasPrefix(cv.Source, "./") && !strings.HasPrefix(cv.Source, "../") && cv.Source != "~" && cv.Source != "." && !IsWindowsDrivePath(cv.Source) {
 			cv.Type = "volume"
 		}
 	case yaml.MappingNode:
@@ -431,7 +437,7 @@ func (cv *ComposeVolume) UnmarshalYAML(value *yaml.Node) error {
 		cv.ReadOnly = m.ReadOnly
 		if cv.Type == "" {
 			cv.Type = "bind"
-			if !strings.HasPrefix(cv.Source, "/") && !strings.HasPrefix(cv.Source, "./") && !strings.HasPrefix(cv.Source, "../") && cv.Source != "~" && cv.Source != "." && !isWindowsDrivePath(cv.Source) {
+			if !strings.HasPrefix(cv.Source, "/") && !strings.HasPrefix(cv.Source, "./") && !strings.HasPrefix(cv.Source, "../") && cv.Source != "~" && cv.Source != "." && !IsWindowsDrivePath(cv.Source) {
 				cv.Type = "volume"
 			}
 		}

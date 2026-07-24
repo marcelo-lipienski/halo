@@ -773,3 +773,43 @@ services:
 		t.Errorf("expected stdout to contain [Dry-Run], got: %q", stdoutStr)
 	}
 }
+
+func TestCLISnapshotAndDiffEdgeCases(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	envPath := filepath.Join(tempDir, ".env")
+	_ = os.WriteFile(composePath, []byte("services:\n  web:\n    image: nginx:latest\n"), 0644)
+	_ = os.WriteFile(envPath, []byte("PORT=8080\n"), 0644)
+
+	// 1. Invalid format
+	_, stderrStr, code := runInProcess([]string{"snapshot", "--config-dir", tempDir, "--format", "invalid"})
+	if code != 1 || !strings.Contains(stderrStr, "Invalid format") {
+		t.Errorf("expected exit code 1 for invalid format, got %d, stderr: %s", code, stderrStr)
+	}
+
+	// 2. Snapshot dry-run json
+	stdoutStr, _, code := runInProcess([]string{"snapshot", "--config-dir", tempDir, "--format", "json", "-d"})
+	if code != 0 || !strings.Contains(stdoutStr, `"dry_run":true`) {
+		t.Errorf("expected dry_run json success, got code %d, stdout: %s", code, stdoutStr)
+	}
+
+	// 3. Snapshot execution json
+	snapPath := filepath.Join(tempDir, "snap.json")
+	stdoutStr, _, code = runInProcess([]string{"snapshot", snapPath, "--config-dir", tempDir, "--format", "json"})
+	if code != 0 || !strings.Contains(stdoutStr, `"status":"success"`) {
+		t.Errorf("expected snapshot json success, got code %d, stdout: %s", code, stdoutStr)
+	}
+
+	// 4. Diff execution json against generated snapPath
+	stdoutStr, _, code = runInProcess([]string{"diff", snapPath, "--config-dir", tempDir, "--format", "json"})
+	if code != 0 {
+		t.Errorf("expected diff json success, got code %d, stdout: %s", code, stdoutStr)
+	}
+
+	// 5. Diff missing snapshot
+	stdoutStr, stderrStr, code = runInProcess([]string{"diff", filepath.Join(tempDir, "missing.json"), "--config-dir", tempDir})
+	outCombined := stdoutStr + stderrStr
+	if code != 1 || !strings.Contains(outCombined, "Snapshot file not found") {
+		t.Errorf("expected missing snapshot error, got code %d, combined output: %s", code, outCombined)
+	}
+}

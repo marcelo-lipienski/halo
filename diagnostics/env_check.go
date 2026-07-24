@@ -320,17 +320,8 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 	return results
 }
 
-// CheckEnvExampleDrift compares .env against .env.example.
-func CheckEnvExampleDrift(envPath, examplePath string) ([]output.CheckResult, error) {
-	return checkEnvExampleDriftWithEngine(nil, envPath, examplePath)
-}
-
 // CheckEnvExampleDrift compares .env against .env.example using Engine configuration.
 func (e *Engine) CheckEnvExampleDrift(envPath, examplePath string) ([]output.CheckResult, error) {
-	return checkEnvExampleDriftWithEngine(e, envPath, examplePath)
-}
-
-func checkEnvExampleDriftWithEngine(e *Engine, envPath, examplePath string) ([]output.CheckResult, error) {
 	var results []output.CheckResult
 
 	if _, err := os.Stat(examplePath); os.IsNotExist(err) {

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/marcelo-lipienski/halo/output"
 )
@@ -402,9 +403,26 @@ func matchGitignorePattern(pattern string, relPath string) (bool, error) {
 	return matched, nil
 }
 
+func quoteMetaByte(buf *strings.Builder, b byte) {
+	switch b {
+	case '+', '?', '.', '*', '^', '$', '(', ')', '[', ']', '{', '}', '|', '\\':
+		buf.WriteByte('\\')
+		buf.WriteByte(b)
+	default:
+		buf.WriteByte(b)
+	}
+}
+
+var globRegexCache sync.Map // map[string]*regexp.Regexp
+
 func matchGlob(pattern string, target string) (bool, error) {
+	if val, ok := globRegexCache.Load(pattern); ok {
+		return val.(*regexp.Regexp).MatchString(target), nil
+	}
+
 	var regexBuf strings.Builder
-	regexBuf.WriteString("^")
+	regexBuf.Grow(len(pattern)*2 + 2)
+	regexBuf.WriteByte('^')
 
 	i := 0
 	n := len(pattern)
@@ -432,21 +450,22 @@ func matchGlob(pattern string, target string) (bool, error) {
 			i++
 		case '\\':
 			if i+1 < n {
-				regexBuf.WriteString(regexp.QuoteMeta(string(pattern[i+1])))
+				quoteMetaByte(&regexBuf, pattern[i+1])
 				i += 2
 			} else {
-				regexBuf.WriteByte('\\')
+				regexBuf.WriteString(`\\`)
 				i++
 			}
 		default:
-			regexBuf.WriteString(regexp.QuoteMeta(string(c)))
+			quoteMetaByte(&regexBuf, c)
 			i++
 		}
 	}
-	regexBuf.WriteString("$")
+	regexBuf.WriteByte('$')
 	re, err := regexp.Compile(regexBuf.String())
 	if err != nil {
 		return false, err
 	}
+	globRegexCache.Store(pattern, re)
 	return re.MatchString(target), nil
 }

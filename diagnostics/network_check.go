@@ -212,6 +212,17 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 			}
 
 			for _, p := range ports {
+				if err := ctx.Err(); err != nil {
+					results = append(results, output.CheckResult{
+						Group:      "Network & Port Availability",
+						Name:       "Check Timeout",
+						Status:     output.CheckFailed,
+						Error:      "Network and port collision check was cancelled",
+						Mitigation: "Verify local Docker daemon performance and resources.",
+					})
+					return results
+				}
+
 				pStr := strconv.Itoa(p)
 				if hasContainers && isPortBoundBySelf(p, proto, containers.Items, projectName, svcName) {
 					continue
@@ -480,22 +491,22 @@ func isPortBindError(errStr string) bool {
 		strings.Contains(errStr, "connectivity")
 }
 
+var ssUsersRegex = regexp.MustCompile(`users:\(\("([^"]+)",pid=(\d+)`)
+
 var getOccupyingProcessFunc = func(port string, proto string) (string, int, error) {
 	if runtime.GOOS == "windows" {
-		cmd := exec.Command("netstat", "-ano")
+		cmd := exec.Command("netstat", "-ano", "-p", proto)
 		var out bytes.Buffer
 		cmd.Stdout = &out
 		if err := cmd.Run(); err != nil {
 			return "", 0, err
 		}
+
 		lines := strings.Split(out.String(), "\n")
-		pid := 0
+		var pid int
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
 			if line == "" {
-				continue
-			}
-			if !strings.HasPrefix(strings.ToLower(line), strings.ToLower(proto)) {
 				continue
 			}
 			fields := strings.Fields(line)
@@ -527,25 +538,22 @@ var getOccupyingProcessFunc = func(port string, proto string) (string, int, erro
 		return "Unknown", pid, nil
 	}
 
-	lsofProto := proto
-	cmd := exec.Command("lsof", "-i", fmt.Sprintf("%s:%s", lsofProto, port), "-F", "pc")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err == nil {
-		lines := strings.Split(out.String(), "\n")
-		var pid int
-		var name string
-		for _, line := range lines {
-			if strings.HasPrefix(line, "p") {
-				if p, err := strconv.Atoi(line[1:]); err == nil {
-					pid = p
+	if runtime.GOOS == "darwin" {
+		cmd := exec.Command("lsof", "-i", fmt.Sprintf("%s:%s", proto, port), "-P", "-n", "-sTCP:LISTEN")
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		if err := cmd.Run(); err == nil {
+			lines := strings.Split(out.String(), "\n")
+			if len(lines) > 1 {
+				fields := strings.Fields(lines[1])
+				if len(fields) >= 2 {
+					name := fields[0]
+					pid, err := strconv.Atoi(fields[1])
+					if err == nil {
+						return name, pid, nil
+					}
 				}
-			} else if strings.HasPrefix(line, "c") {
-				name = line[1:]
 			}
-		}
-		if pid > 0 && name != "" {
-			return name, pid, nil
 		}
 	}
 
@@ -560,9 +568,8 @@ var getOccupyingProcessFunc = func(port string, proto string) (string, int, erro
 		if err := cmd.Run(); err == nil {
 			lines := strings.Split(out.String(), "\n")
 			for _, line := range lines {
-				if strings.Contains(line, "pid=") {
-					re := regexp.MustCompile(`users:\(\("([^"]+)",pid=(\d+)`)
-					matches := re.FindStringSubmatch(line)
+				if strings.Contains(line, "users:") {
+					matches := ssUsersRegex.FindStringSubmatch(line)
 					if len(matches) == 3 {
 						if p, err := strconv.Atoi(matches[2]); err == nil {
 							return matches[1], p, nil

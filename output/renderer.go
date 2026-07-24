@@ -66,16 +66,16 @@ func isTTY(w io.Writer) bool {
 	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
-// useColor returns true if color is allowed.
-func useColor(w io.Writer) bool {
+// UseColor returns true if color is allowed.
+func UseColor(w io.Writer) bool {
 	if os.Getenv("NO_COLOR") != "" {
 		return false
 	}
 	return isTTY(w)
 }
 
-// colorize wraps s in ANSI escape sequence.
-func colorize(s, ansi string, color bool) string {
+// Colorize wraps s in ANSI escape sequence.
+func Colorize(s, ansi string, color bool) string {
 	if !color {
 		return s
 	}
@@ -84,17 +84,17 @@ func colorize(s, ansi string, color bool) string {
 
 // RenderText writes ANSI/plain report to writer. See ADR-0002.
 func RenderText(w io.Writer, report *DiagnosticsReport, verbose bool) {
-	color := useColor(w)
+	color := UseColor(w)
 
 	fmt.Fprintln(w, "=== halo Diagnostics Report ===")
 	fmt.Fprintf(w, "Status:   ")
 	switch report.Status {
 	case StatusHealthy:
-		fmt.Fprintln(w, colorize(string(report.Status), "32", color))
+		fmt.Fprintln(w, Colorize(string(report.Status), "32", color))
 	case StatusSystemFailure:
-		fmt.Fprintln(w, colorize(string(report.Status), "31;1", color))
+		fmt.Fprintln(w, Colorize(string(report.Status), "31;1", color))
 	case StatusEnvironmentBroken:
-		fmt.Fprintln(w, colorize(string(report.Status), "33;1", color))
+		fmt.Fprintln(w, Colorize(string(report.Status), "33;1", color))
 	}
 	fmt.Fprintf(w, "Duration: %dms\n", report.DurationMs)
 
@@ -112,23 +112,23 @@ func RenderText(w io.Writer, report *DiagnosticsReport, verbose bool) {
 		switch check.Status {
 		case CheckPassed:
 			passed++
-			fmt.Fprintf(w, "  %s %s\n", colorize("✓", "32", color), check.Name)
+			fmt.Fprintf(w, "  %s %s\n", Colorize("✓", "32", color), check.Name)
 		case CheckWarning:
 			warned++
-			fmt.Fprintf(w, "  %s %s\n", colorize("⚠", "33", color), check.Name)
+			fmt.Fprintf(w, "  %s %s\n", Colorize("⚠", "33", color), check.Name)
 			if check.Error != "" && verbose {
-				fmt.Fprintf(w, "    %s %s\n", colorize("Warning:", "90", color), check.Error)
+				fmt.Fprintf(w, "    %s %s\n", Colorize("Warning:", "90", color), check.Error)
 			}
 			if check.Mitigation != "" {
-				fmt.Fprintf(w, "    %s     %s\n", colorize("Fix:", "36", color), check.Mitigation)
+				fmt.Fprintf(w, "    %s     %s\n", Colorize("Fix:", "36", color), check.Mitigation)
 			}
 		default: // CheckFailed
-			fmt.Fprintf(w, "  %s %s\n", colorize("✗", "31", color), check.Name)
+			fmt.Fprintf(w, "  %s %s\n", Colorize("✗", "31", color), check.Name)
 			if check.Error != "" {
-				fmt.Fprintf(w, "    %s   %s\n", colorize("Error:", "90", color), check.Error)
+				fmt.Fprintf(w, "    %s   %s\n", Colorize("Error:", "90", color), check.Error)
 			}
 			if check.Mitigation != "" {
-				fmt.Fprintf(w, "    %s     %s\n", colorize("Fix:", "36", color), check.Mitigation)
+				fmt.Fprintf(w, "    %s     %s\n", Colorize("Fix:", "36", color), check.Mitigation)
 			}
 		}
 	}
@@ -138,9 +138,9 @@ func RenderText(w io.Writer, report *DiagnosticsReport, verbose bool) {
 		// Warnings do not count as failures.
 		failed := total - passed - warned
 		if failed == 0 {
-			fmt.Fprintln(w, colorize(fmt.Sprintf("%d of %d checks passed.", passed, total), "32", color))
+			fmt.Fprintln(w, Colorize(fmt.Sprintf("%d of %d checks passed.", passed, total), "32", color))
 		} else {
-			fmt.Fprintln(w, colorize(fmt.Sprintf("%d of %d checks passed (%d failed).", passed, total, failed), "31", color))
+			fmt.Fprintln(w, Colorize(fmt.Sprintf("%d of %d checks passed (%d failed).", passed, total, failed), "31", color))
 		}
 	}
 	fmt.Fprintln(w)
