@@ -285,7 +285,7 @@ func TestIsTTYWithFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tmpFile.Close()
+	defer func() { _ = tmpFile.Close() }()
 
 	// A regular temp file is an *os.File but not a CharDevice (TTY), so UseColor returns false
 	if UseColor(tmpFile) {
