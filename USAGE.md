@@ -6,6 +6,29 @@ This guide covers advanced configuration, CLI flags, merging mechanics, and diag
 
 ## Commands
 
+### `halo check`
+Runs the full diagnostic suite to validate local system state against declared Docker topologies, environment variables, port availability, container health, and volume permissions.
+
+```bash
+halo check
+```
+*(Executing `halo` with no subcommand defaults to `halo check`)*
+
+### `halo fix`
+Automatically mitigates detected configuration, permission, and directory structure issues without requiring manual file system adjustments.
+
+```bash
+halo fix
+```
+*(Equivalent to running `halo check --fix`)*
+
+### `halo init`
+Copies or merges missing configuration keys from `.env.example` into `.env`. Automatically flags missing placeholder values that require developer input before execution.
+
+```bash
+halo init
+```
+
 ### `halo doctor`
 Inspects host system prerequisites:
 * **Docker CLI & Compose v2**: Verifies if Docker Compose v2 is installed.
@@ -16,6 +39,24 @@ Inspects host system prerequisites:
 
 ```bash
 halo doctor
+```
+
+### `halo snapshot [file]`
+Captures a baseline state snapshot of the local environment (including files, environment variables, ports, and active container states) and writes it to `.halo-snapshot.json` (or a specified output path).
+
+```bash
+halo snapshot
+# Or save to custom file path:
+halo snapshot baseline.json
+```
+
+### `halo diff [file]`
+Compares current environment state against a previously captured snapshot (`.halo-snapshot.json` or specified file path) and reports any environment drift (modified files, altered environment variables, or port/container changes). Returns exit code 2 if differences are detected.
+
+```bash
+halo diff
+# Or compare against custom snapshot file:
+halo diff baseline.json
 ```
 
 ### `halo version`
@@ -108,7 +149,8 @@ services:
 
 * **`--fix`**: Automatically creates missing directories and repairs read/write permissions on host-mounted volume paths.
 * **`--interactive, -i`**: Requires user confirmation before applying mitigations to the host system.
-* **`--dry-run`**: Simulates the `--fix` output without editing the filesystem.
+* **`--dry-run, -d`**: Previews mitigations or state snapshot operations without modifying the filesystem.
+* **`--quiet, -q`**: Suppresses standard output.
 * **`--verbose, -v`**: Enables debug logs, including raw system error reports.
 * **`--watch, -w`**: Live-monitors configuration files. Clears the terminal and instantly re-runs diagnostics upon any update or deletion.
 
