@@ -20,7 +20,6 @@ Automatically mitigates detected configuration, permission, and directory struct
 ```bash
 halo fix
 ```
-*(Equivalent to running `halo check --fix`)*
 
 ### `halo init`
 Copies or merges missing configuration keys from `.env.example` into `.env`. Automatically flags missing placeholder values that require developer input before execution.
@@ -147,7 +146,6 @@ services:
 
 ### Runtime Controls
 
-* **`--fix`**: Automatically creates missing directories and repairs read/write permissions on host-mounted volume paths.
 * **`--interactive, -i`**: Requires user confirmation before applying mitigations to the host system.
 * **`--dry-run, -d`**: Previews mitigations or state snapshot operations without modifying the filesystem.
 * **`--quiet, -q`**: Suppresses standard output.

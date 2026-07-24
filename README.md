@@ -64,7 +64,7 @@ halo fix
 ---
 
 ## Advanced Usage
-For detailed instructions on advanced flags (such as `--watch`, `--fix`, `--dry-run`, `--interactive`, or `--format json`), multi-file compose merging rules, and system-level diagnostics using `halo doctor`, please refer to:
+For detailed instructions on advanced flags (such as `--watch`, `--dry-run`, `--interactive`, or `--format json`), multi-file compose merging rules, and system-level diagnostics using `halo doctor`, please refer to:
 * [USAGE.md](USAGE.md)
 
 ---
