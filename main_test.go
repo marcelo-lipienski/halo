@@ -955,7 +955,7 @@ func TestCLISnapshotAndDiffEdgeCasesExtended(t *testing.T) {
 	modifiedData, _ := json.Marshal(snapObj)
 	_ = os.WriteFile(mismatchedSnap, modifiedData, 0644)
 
-	stdoutStr, stderrStr, code = runInProcess([]string{"diff", mismatchedSnap, "--config-dir", tempDir})
+	_, stderrStr, code = runInProcess([]string{"diff", mismatchedSnap, "--config-dir", tempDir})
 	if code != 0 || !strings.Contains(stderrStr, "Comparing snapshot from project 'different-project-name'") {
 		t.Errorf("expected project mismatch warning on stderr, got code %d, stderr: %s", code, stderrStr)
 	}
