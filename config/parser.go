@@ -84,6 +84,7 @@ func (cp *ComposePorts) UnmarshalYAML(value *yaml.Node) error {
 				*cp = append(*cp, s)
 			case yaml.MappingNode:
 				var m struct {
+					HostIP    string      `yaml:"host_ip"`
 					Target    interface{} `yaml:"target"`
 					Published interface{} `yaml:"published"`
 					Protocol  string      `yaml:"protocol"`
@@ -99,7 +100,11 @@ func (cp *ComposePorts) UnmarshalYAML(value *yaml.Node) error {
 					proto = "tcp"
 				}
 				if published != "" && published != "<nil>" {
-					*cp = append(*cp, fmt.Sprintf("%s:%s/%s", published, target, proto))
+					if m.HostIP != "" {
+						*cp = append(*cp, fmt.Sprintf("%s:%s:%s/%s", m.HostIP, published, target, proto))
+					} else {
+						*cp = append(*cp, fmt.Sprintf("%s:%s/%s", published, target, proto))
+					}
 				} else {
 					*cp = append(*cp, fmt.Sprintf("%s/%s", target, proto))
 				}
@@ -568,7 +573,29 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 		for svcName, srcSvc := range config.Services {
 			destSvc, exists := merged.Services[svcName]
 			if !exists {
-				merged.Services[svcName] = srcSvc
+				copySvc := srcSvc
+				if srcSvc.Environment != nil {
+					copySvc.Environment = make(ComposeEnvironment, len(srcSvc.Environment))
+					for k, v := range srcSvc.Environment {
+						copySvc.Environment[k] = v
+					}
+				}
+				if srcSvc.Ports != nil {
+					copySvc.Ports = append(ComposePorts(nil), srcSvc.Ports...)
+				}
+				if srcSvc.Volumes != nil {
+					copySvc.Volumes = append([]ComposeVolume(nil), srcSvc.Volumes...)
+				}
+				if srcSvc.EnvFiles != nil {
+					copySvc.EnvFiles = append(ComposeEnvFiles(nil), srcSvc.EnvFiles...)
+				}
+				if srcSvc.Secrets != nil {
+					copySvc.Secrets = append(ComposeServiceSecrets(nil), srcSvc.Secrets...)
+				}
+				if srcSvc.Configs != nil {
+					copySvc.Configs = append(ComposeServiceConfigs(nil), srcSvc.Configs...)
+				}
+				merged.Services[svcName] = copySvc
 				continue
 			}
 
@@ -579,18 +606,23 @@ func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 				destSvc.ContainerName = srcSvc.ContainerName
 			}
 			if len(srcSvc.Entrypoint) > 0 {
-				destSvc.Entrypoint = srcSvc.Entrypoint
+				destSvc.Entrypoint = append(StringOrSlice(nil), srcSvc.Entrypoint...)
 			}
 			if len(srcSvc.Command) > 0 {
-				destSvc.Command = srcSvc.Command
+				destSvc.Command = append(StringOrSlice(nil), srcSvc.Command...)
 			}
 
 			if destSvc.Environment == nil {
 				destSvc.Environment = make(ComposeEnvironment)
 			}
-			for k, v := range srcSvc.Environment {
-				destSvc.Environment[k] = v
+			newEnv := make(ComposeEnvironment, len(destSvc.Environment)+len(srcSvc.Environment))
+			for k, v := range destSvc.Environment {
+				newEnv[k] = v
 			}
+			for k, v := range srcSvc.Environment {
+				newEnv[k] = v
+			}
+			destSvc.Environment = newEnv
 
 			if len(srcSvc.Ports) > 0 {
 				portMap := make(map[string]bool)

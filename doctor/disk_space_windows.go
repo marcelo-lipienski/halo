@@ -7,11 +7,13 @@ import (
 	"unsafe"
 )
 
+var (
+	modKernel32DiskFree     = syscall.NewLazyDLL("kernel32.dll")
+	procGetDiskFreeSpaceExW = modKernel32DiskFree.NewProc("GetDiskFreeSpaceExW")
+)
+
 // GetFreeDiskSpace returns free disk space in bytes.
 func GetFreeDiskSpace(path string) (uint64, error) {
-	h := syscall.MustLoadDLL("kernel32.dll")
-	c := h.MustFindProc("GetDiskFreeSpaceExW")
-
 	var freeBytes uint64
 	var totalBytes uint64
 	var totalFreeBytes uint64
@@ -21,7 +23,7 @@ func GetFreeDiskSpace(path string) (uint64, error) {
 		return 0, err
 	}
 
-	r, _, err := c.Call(
+	r, _, err := procGetDiskFreeSpaceExW.Call(
 		uintptr(unsafe.Pointer(pathPtr)),
 		uintptr(unsafe.Pointer(&freeBytes)),
 		uintptr(unsafe.Pointer(&totalBytes)),

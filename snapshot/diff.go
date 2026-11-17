@@ -10,10 +10,13 @@ import (
 	"github.com/marcelo-lipienski/halo/output"
 )
 
-var sensitiveKeyRegex = regexp.MustCompile(`(?i)(KEY|SECRET|PASSWORD|PASS|TOKEN|CREDENTIAL|AUTH|CERT|JWT|API)`)
+var sensitiveKeyRegex = regexp.MustCompile(`(?i)(KEY|SECRET|PASSWORD|PASSWD|PASS|_PWD|^PWD_|TOKEN|CREDENTIAL|CRED|AUTH|CERT|JWT|API)`)
 
 // RedactIfSensitive masks sensitive environment values according to ADR-0011.
 func RedactIfSensitive(key, val string) string {
+	if key == "PWD" || key == "OLDPWD" {
+		return val
+	}
 	if val != "" && len(val) > 2 && sensitiveKeyRegex.MatchString(key) {
 		return "[REDACTED]"
 	}

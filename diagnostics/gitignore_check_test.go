@@ -284,3 +284,43 @@ func TestCheckGitignoreSecurityTrackedRepo(t *testing.T) {
 		t.Errorf("expected auto-fixed tracked env file, got: %+v", resFix)
 	}
 }
+
+func TestCheckGitignoreSecurityServiceEnvFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	customEnv := filepath.Join(tmpDir, "custom.env")
+	if err := os.WriteFile(customEnv, []byte("SECRET=true"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	comp := &config.ComposeConfig{
+		Services: map[string]config.ComposeService{
+			"app": {
+				EnvFiles: config.ComposeEnvFiles{
+					{File: "custom.env", Required: true, BaseDir: tmpDir},
+				},
+			},
+		},
+	}
+
+	e := &Engine{
+		ConfigDir: tmpDir,
+		Compose:   comp,
+		Env:       map[string]string{},
+	}
+
+	ctx := context.Background()
+	results := e.CheckGitignoreSecurity(ctx)
+
+	foundCustom := false
+	for _, r := range results {
+		if strings.Contains(r.Name, "custom.env") {
+			foundCustom = true
+			if r.Status != output.CheckFailed {
+				t.Errorf("expected custom.env to fail gitignore check, got status: %v", r.Status)
+			}
+		}
+	}
+	if !foundCustom {
+		t.Error("expected custom.env from service EnvFiles to be audited by CheckGitignoreSecurity")
+	}
+}

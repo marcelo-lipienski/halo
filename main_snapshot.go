@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/marcelo-lipienski/halo/config"
 	"github.com/marcelo-lipienski/halo/snapshot"
@@ -50,7 +51,10 @@ func executeSnapshot(args []string) int {
 		return 1
 	}
 
-	snap, warnings, err := snapshot.CreateSnapshot(context.Background(), configDir, envFile, composeFiles)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	snap, warnings, err := snapshot.CreateSnapshot(ctx, configDir, envFile, composeFiles)
 	if err != nil {
 		if !quiet {
 			if format == "json" {
@@ -149,7 +153,10 @@ func executeDiff(args []string) int {
 		return 1
 	}
 
-	newSnap, warnings, err := snapshot.CreateSnapshot(context.Background(), configDir, envFile, composeFiles)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	newSnap, warnings, err := snapshot.CreateSnapshot(ctx, configDir, envFile, composeFiles)
 	if err != nil {
 		if !quiet {
 			if format == "json" {

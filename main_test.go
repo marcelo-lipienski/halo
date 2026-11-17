@@ -988,4 +988,10 @@ func TestCLISnapshotAndDiffEdgeCasesExtended(t *testing.T) {
 	if code != 0 || !strings.Contains(stdoutStr, "halo version") {
 		t.Errorf("expected version output, got code %d, stdout: %s", code, stdoutStr)
 	}
+
+	// 10. Check with --fix global flag (in dry-run mode previews mitigations)
+	stdoutStr, _, code = runInProcess([]string{"check", "--fix", "--dry-run", "--config-dir", tempDir})
+	if code != 2 || !strings.Contains(stdoutStr, "[Dry-Run]") {
+		t.Errorf("expected exit code 2 and dry-run output for check with --fix, got code %d, stdout: %s", code, stdoutStr)
+	}
 }

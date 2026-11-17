@@ -7,6 +7,11 @@ import (
 	"unsafe"
 )
 
+var (
+	modKernel32Mem           = syscall.NewLazyDLL("kernel32.dll")
+	procGlobalMemoryStatusEx = modKernel32Mem.NewProc("GlobalMemoryStatusEx")
+)
+
 type memoryStatusEx struct {
 	dwLength                uint32
 	dwMemoryLoad            uint32
@@ -21,13 +26,10 @@ type memoryStatusEx struct {
 
 // GetHostMemory returns total system memory in bytes.
 func GetHostMemory() (uint64, error) {
-	h := syscall.MustLoadDLL("kernel32.dll")
-	c := h.MustFindProc("GlobalMemoryStatusEx")
-
 	var ms memoryStatusEx
 	ms.dwLength = uint32(unsafe.Sizeof(ms))
 
-	r, _, err := c.Call(uintptr(unsafe.Pointer(&ms)))
+	r, _, err := procGlobalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&ms)))
 	if r == 0 {
 		return 0, err
 	}

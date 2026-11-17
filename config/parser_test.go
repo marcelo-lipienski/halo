@@ -245,6 +245,10 @@ services:
         published: 8080
         protocol: tcp
         mode: host
+      - host_ip: "127.0.0.1"
+        target: 3000
+        published: 3000
+        protocol: tcp
       - "443:443"
     volumes:
       - ./data:/var/data:ro
@@ -267,7 +271,7 @@ services:
 		t.Fatal("web service not found")
 	}
 
-	expectedPorts := ComposePorts{"8080:80/tcp", "443:443"}
+	expectedPorts := ComposePorts{"8080:80/tcp", "127.0.0.1:3000:3000/tcp", "443:443"}
 	if !reflect.DeepEqual(web.Ports, expectedPorts) {
 		t.Errorf("expected ports %v, got %v", expectedPorts, web.Ports)
 	}
@@ -1119,5 +1123,35 @@ services:
 	v5 := web.Volumes[4]
 	if v5.Type != "bind" {
 		t.Errorf("expected v5 type 'bind', got %q", v5.Type)
+	}
+}
+
+func TestMergeComposeConfigsDeepCopyIsolation(t *testing.T) {
+	cfg1 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"app": {
+				Environment: ComposeEnvironment{
+					"VAR_A": "original",
+				},
+				Ports:   ComposePorts{"80:80"},
+				Volumes: []ComposeVolume{{Source: "./src", Target: "/app"}},
+			},
+		},
+	}
+	cfg2 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"app": {
+				Environment: ComposeEnvironment{
+					"VAR_B": "from_cfg2",
+				},
+			},
+		},
+	}
+
+	merged := MergeComposeConfigs(cfg1, cfg2)
+	merged.Services["app"].Environment["VAR_A"] = "mutated"
+
+	if cfg1.Services["app"].Environment["VAR_A"] != "original" {
+		t.Errorf("MergeComposeConfigs mutated original config map, got: %q", cfg1.Services["app"].Environment["VAR_A"])
 	}
 }

@@ -57,6 +57,9 @@ func TestIsLikelyFilePath(t *testing.T) {
 		{"/app/.gitignore", true},
 		{"/app/Dockerfile", true},
 		{"/app/data_dir", false},
+		{"/etc/nginx/conf.d", false},
+		{"./nginx.d", false},
+		{"/app/data/", false},
 	}
 
 	for _, tt := range tests {

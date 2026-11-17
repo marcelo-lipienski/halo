@@ -510,6 +510,10 @@ func TestSensitiveVariableRedaction(t *testing.T) {
 		expected string
 	}{
 		{"DB_PASSWORD", "supersecret", "[REDACTED]"},
+		{"DB_PWD", "supersecretpwd", "[REDACTED]"},
+		{"USER_CRED", "supersecretcred", "[REDACTED]"},
+		{"APP_PASSWD", "supersecretpasswd", "[REDACTED]"},
+		{"PWD", "/home/user/project", "/home/user/project"},
 		{"AWS_SECRET_KEY", "AKIAIOSFODNN7EXAMPLE", "[REDACTED]"},
 		{"AUTH_TOKEN", "eyJhbGciOi...", "[REDACTED]"},
 		{"API_KEY", "1234567890", "[REDACTED]"},
@@ -556,6 +560,54 @@ func TestSensitiveVariableRedaction(t *testing.T) {
 	}
 	if !bytes.Contains(buf.Bytes(), []byte("[REDACTED]")) {
 		t.Errorf("RenderText expected [REDACTED] marker, got: %s", rendered)
+	}
+}
+
+func TestCreateSnapshotPortsDeterministicOrder(t *testing.T) {
+	tempDir := t.TempDir()
+	envPath := filepath.Join(tempDir, ".env")
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+
+	_ = os.WriteFile(envPath, []byte(""), 0644)
+	composeContent := `
+services:
+  zeta:
+    image: nginx
+    ports:
+      - "9000:9000"
+      - "8000:8000"
+  alpha:
+    image: redis
+    ports:
+      - "6379:6379"
+      - "6380:6380/udp"
+`
+	_ = os.WriteFile(composePath, []byte(composeContent), 0644)
+
+	snap1, _, err1 := CreateSnapshot(context.Background(), tempDir, envPath, []string{composePath})
+	if err1 != nil {
+		t.Fatalf("unexpected error: %v", err1)
+	}
+	snap2, _, err2 := CreateSnapshot(context.Background(), tempDir, envPath, []string{composePath})
+	if err2 != nil {
+		t.Fatalf("unexpected error: %v", err2)
+	}
+
+	if len(snap1.Ports) != 4 || len(snap2.Ports) != 4 {
+		t.Fatalf("expected 4 ports, got %d and %d", len(snap1.Ports), len(snap2.Ports))
+	}
+
+	for i := range snap1.Ports {
+		if snap1.Ports[i].Service != snap2.Ports[i].Service ||
+			snap1.Ports[i].HostPort != snap2.Ports[i].HostPort ||
+			snap1.Ports[i].Protocol != snap2.Ports[i].Protocol {
+			t.Errorf("port mismatch at index %d between runs: %+v vs %+v", i, snap1.Ports[i], snap2.Ports[i])
+		}
+	}
+
+	// Verify order is alpha then zeta
+	if snap1.Ports[0].Service != "alpha" || snap1.Ports[2].Service != "zeta" {
+		t.Errorf("expected sorted services (alpha before zeta), got: %+v", snap1.Ports)
 	}
 }
 

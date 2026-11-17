@@ -38,8 +38,15 @@ var promptConfirm = func(question string) bool {
 }
 
 func isLikelyFilePath(path string) bool {
-	base := filepath.Base(path)
-	ext := filepath.Ext(path)
+	cleanPath := filepath.Clean(path)
+	base := filepath.Base(cleanPath)
+	ext := strings.ToLower(filepath.Ext(cleanPath))
+
+	// Common directory patterns ending in .d or trailing slash in original path
+	if strings.HasSuffix(path, "/") || strings.HasSuffix(path, "\\") || strings.HasSuffix(base, ".d") {
+		return false
+	}
+
 	return ext != "" || base == ".env" || base == ".gitignore" || base == "Dockerfile"
 }
 

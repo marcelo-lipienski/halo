@@ -2255,6 +2255,60 @@ services:
 	}
 }
 
+func TestEngineSensitiveDataRedactionPwdAndCred(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	composeContent := `
+services:
+  web:
+    image: nginx
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatalf("failed to write temp compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse temp compose: %v", err)
+	}
+
+	env := map[string]string{
+		"DB_PWD":     "secret_db_password_xyz",
+		"USER_CRED":  "secret_user_credential_abc",
+		"APP_PASSWD": "secret_app_passwd_789",
+		"PWD":        tempDir,
+	}
+
+	engine := NewEngine(tempDir, composePath, env, comp, nil)
+	report := &output.DiagnosticsReport{
+		Checks: []output.CheckResult{
+			{
+				Group:      "Test Group",
+				Name:       fmt.Sprintf("Check path %s with DB_PWD %s", tempDir, "secret_db_password_xyz"),
+				Error:      "Error with USER_CRED secret_user_credential_abc and APP_PASSWD secret_app_passwd_789",
+				Mitigation: fmt.Sprintf("Mitigation for %s", tempDir),
+			},
+		},
+	}
+
+	engine.redactReport(report)
+
+	chk := report.Checks[0]
+	if strings.Contains(chk.Name, "secret_db_password_xyz") {
+		t.Error("expected DB_PWD to be redacted")
+	}
+	if strings.Contains(chk.Error, "secret_user_credential_abc") {
+		t.Error("expected USER_CRED to be redacted")
+	}
+	if strings.Contains(chk.Error, "secret_app_passwd_789") {
+		t.Error("expected APP_PASSWD to be redacted")
+	}
+	// PWD working directory should NOT be redacted
+	if !strings.Contains(chk.Name, tempDir) {
+		t.Errorf("expected working directory %s to not be redacted, got: %s", tempDir, chk.Name)
+	}
+}
+
 func TestEngineDockerOffline(t *testing.T) {
 	tempDir := t.TempDir()
 	composePath := filepath.Join(tempDir, "docker-compose.yml")
