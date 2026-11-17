@@ -680,8 +680,9 @@ services:
 func TestEngineVolumeTildeExpansion(t *testing.T) {
 	tempDir := t.TempDir()
 
-	// Override HOME environment variable
+	// Override HOME and USERPROFILE environment variables for cross-platform compatibility
 	t.Setenv("HOME", tempDir)
+	t.Setenv("USERPROFILE", tempDir)
 
 	// Create a subdirectory inside tempDir to act as the expanded folder
 	subDirName := "mock_volume_data"
