@@ -167,8 +167,8 @@ Controls format of diagnostic reports. Accepts `text` (default) or `json`.
 
 ## Auto-Discovery Precedence
 When no flags are specified, `halo` resolves configuration files from `--config-dir` in this order:
-1. **Primary compose file**: Prefers `docker-compose.yml` over `docker-compose.yaml`.
-2. **Override file**: Automatically merges `docker-compose.override.yml` (or `.yaml`) on top of the primary if it exists.
+1. **Primary compose file**: Follows Docker Compose v2 specification precedence (`compose.yaml` > `compose.yml` > `docker-compose.yml` > `docker-compose.yaml`).
+2. **Override file**: Automatically merges `compose.override.yaml` (or `.yml`), or `docker-compose.override.yml` (or `.yaml`) on top of the primary if it exists.
 3. **Env file**: Loaded from `<config-dir>/.env`.
 
 ---

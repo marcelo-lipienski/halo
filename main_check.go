@@ -34,29 +34,8 @@ func executeCheck() int {
 		envPath = filepath.Join(configDir, ".env")
 	}
 
-	// Determine compose files to load.
-	var filesToLoad []string
-	if len(composeFiles) > 0 {
-		filesToLoad = composeFiles
-	} else {
-		// Auto-detect compose file. See ADR-0003.
-		composePathYml := filepath.Join(configDir, "docker-compose.yml")
-		composePathYaml := filepath.Join(configDir, "docker-compose.yaml")
-		composePath := composePathYaml
-		if _, err := os.Stat(composePathYml); err == nil {
-			composePath = composePathYml
-		}
-		filesToLoad = append(filesToLoad, composePath)
-
-		// Check for override compose file. See ADR-0003.
-		overridePathYml := filepath.Join(configDir, "docker-compose.override.yml")
-		overridePathYaml := filepath.Join(configDir, "docker-compose.override.yaml")
-		if _, err := os.Stat(overridePathYml); err == nil {
-			filesToLoad = append(filesToLoad, overridePathYml)
-		} else if _, err := os.Stat(overridePathYaml); err == nil {
-			filesToLoad = append(filesToLoad, overridePathYaml)
-		}
-	}
+	// Determine compose files to load. See ADR-0003.
+	filesToLoad := config.FindComposeFiles(configDir, composeFiles)
 
 	// Stat config files.
 	var missing []string
@@ -172,26 +151,7 @@ func getWatchFiles() []string {
 		files = append(files, envPath)
 	}
 
-	var filesToLoad []string
-	if len(composeFiles) > 0 {
-		filesToLoad = composeFiles
-	} else {
-		composePathYml := filepath.Join(configDir, "docker-compose.yml")
-		composePathYaml := filepath.Join(configDir, "docker-compose.yaml")
-		composePath := composePathYaml
-		if _, err := os.Stat(composePathYml); err == nil {
-			composePath = composePathYml
-		}
-		filesToLoad = append(filesToLoad, composePath)
-
-		overridePathYml := filepath.Join(configDir, "docker-compose.override.yml")
-		overridePathYaml := filepath.Join(configDir, "docker-compose.override.yaml")
-		if _, err := os.Stat(overridePathYml); err == nil {
-			filesToLoad = append(filesToLoad, overridePathYml)
-		} else if _, err := os.Stat(overridePathYaml); err == nil {
-			filesToLoad = append(filesToLoad, overridePathYaml)
-		}
-	}
+	filesToLoad := config.FindComposeFiles(configDir, composeFiles)
 	for _, f := range filesToLoad {
 		if _, err := os.Stat(f); err == nil {
 			files = append(files, f)

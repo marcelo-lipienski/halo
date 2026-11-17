@@ -493,6 +493,56 @@ func ParseCompose(path string) (*ComposeConfig, error) {
 	return &config, nil
 }
 
+// FindComposeFiles auto-discovers compose files in configDir if explicitFiles is empty.
+// Search precedence follows Docker Compose v2 specification:
+// Primary: compose.yaml, compose.yml, docker-compose.yml, docker-compose.yaml.
+// Override: compose.override.yaml, compose.override.yml, docker-compose.override.yml, docker-compose.override.yaml.
+func FindComposeFiles(configDir string, explicitFiles []string) []string {
+	if len(explicitFiles) > 0 {
+		return explicitFiles
+	}
+
+	primaryCandidates := []string{
+		"compose.yaml",
+		"compose.yml",
+		"docker-compose.yml",
+		"docker-compose.yaml",
+	}
+
+	overrideCandidates := []string{
+		"compose.override.yaml",
+		"compose.override.yml",
+		"docker-compose.override.yml",
+		"docker-compose.override.yaml",
+	}
+
+	var primaryPath string
+	for _, name := range primaryCandidates {
+		p := filepath.Join(configDir, name)
+		if _, err := os.Stat(p); err == nil {
+			primaryPath = p
+			break
+		}
+	}
+
+	if primaryPath == "" {
+		primaryPath = filepath.Join(configDir, "docker-compose.yml")
+		return []string{primaryPath}
+	}
+
+	files := []string{primaryPath}
+
+	for _, name := range overrideCandidates {
+		p := filepath.Join(configDir, name)
+		if _, err := os.Stat(p); err == nil {
+			files = append(files, p)
+			break
+		}
+	}
+
+	return files
+}
+
 // MergeComposeConfigs merges multiple configurations left-to-right. See ADR-0003.
 func MergeComposeConfigs(configs ...*ComposeConfig) *ComposeConfig {
 	merged := &ComposeConfig{

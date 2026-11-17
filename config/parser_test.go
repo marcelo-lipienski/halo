@@ -1017,3 +1017,41 @@ services:
 	_ = os.WriteFile(composePath, []byte(content), 0644)
 	_, _ = ParseCompose(composePath)
 }
+
+func TestFindComposeFiles(t *testing.T) {
+	// Case 1: Explicit files bypass auto-discovery
+	explicit := []string{"/custom/compose.yml", "/custom/override.yml"}
+	res := FindComposeFiles(".", explicit)
+	if !reflect.DeepEqual(res, explicit) {
+		t.Errorf("expected explicit files %v, got %v", explicit, res)
+	}
+
+	// Case 2: No files exist -> fallback to docker-compose.yml
+	emptyDir := t.TempDir()
+	resEmpty := FindComposeFiles(emptyDir, nil)
+	expectedEmpty := []string{filepath.Join(emptyDir, "docker-compose.yml")}
+	if !reflect.DeepEqual(resEmpty, expectedEmpty) {
+		t.Errorf("expected fallback %v, got %v", expectedEmpty, resEmpty)
+	}
+
+	// Case 3: compose.yaml preferred over docker-compose.yml
+	specDir := t.TempDir()
+	composeYaml := filepath.Join(specDir, "compose.yaml")
+	dockerComposeYml := filepath.Join(specDir, "docker-compose.yml")
+	_ = os.WriteFile(composeYaml, []byte(""), 0644)
+	_ = os.WriteFile(dockerComposeYml, []byte(""), 0644)
+
+	resSpec := FindComposeFiles(specDir, nil)
+	if len(resSpec) != 1 || resSpec[0] != composeYaml {
+		t.Errorf("expected compose.yaml to take precedence over docker-compose.yml, got %v", resSpec)
+	}
+
+	// Case 4: compose.yaml with override file
+	composeOverride := filepath.Join(specDir, "compose.override.yaml")
+	_ = os.WriteFile(composeOverride, []byte(""), 0644)
+	resOverride := FindComposeFiles(specDir, nil)
+	expectedOverride := []string{composeYaml, composeOverride}
+	if !reflect.DeepEqual(resOverride, expectedOverride) {
+		t.Errorf("expected %v with override, got %v", expectedOverride, resOverride)
+	}
+}

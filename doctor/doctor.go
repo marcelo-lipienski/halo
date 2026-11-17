@@ -3,6 +3,7 @@ package doctor
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -76,7 +77,13 @@ func RunDoctor(ctx context.Context, configDir string, compose *config.ComposeCon
 	checks = append(checks, checkDockerEngine(ctx))
 
 	// 3. Required CLI tools check.
-	checks = append(checks, checkRequiredTools(ctx, []string{"git", "make", "docker"}))
+	requiredTools := []string{"git", "docker"}
+	if stat, err := os.Stat(filepath.Join(configDir, "Makefile")); err == nil && !stat.IsDir() {
+		requiredTools = append(requiredTools, "make")
+	} else if stat, err := os.Stat(filepath.Join(configDir, "makefile")); err == nil && !stat.IsDir() {
+		requiredTools = append(requiredTools, "make")
+	}
+	checks = append(checks, checkRequiredTools(ctx, requiredTools))
 
 	// 4. System memory check.
 	memCheck := output.CheckResult{

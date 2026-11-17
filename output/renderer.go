@@ -84,6 +84,9 @@ func Colorize(s, ansi string, color bool) string {
 
 // RenderText writes ANSI/plain report to writer. See ADR-0002.
 func RenderText(w io.Writer, report *DiagnosticsReport, verbose bool) {
+	if report == nil {
+		return
+	}
 	color := UseColor(w)
 
 	fmt.Fprintln(w, "=== halo Diagnostics Report ===")

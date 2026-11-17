@@ -102,26 +102,7 @@ func CreateSnapshot(ctx context.Context, configDir string, envPath string, compo
 		envMap = make(map[string]string)
 	}
 
-	var filesToLoad []string
-	if len(composeFiles) > 0 {
-		filesToLoad = composeFiles
-	} else {
-		composePathYml := filepath.Join(configDir, "docker-compose.yml")
-		composePathYaml := filepath.Join(configDir, "docker-compose.yaml")
-		composePath := composePathYaml
-		if _, err := os.Stat(composePathYml); err == nil {
-			composePath = composePathYml
-		}
-		filesToLoad = append(filesToLoad, composePath)
-
-		overridePathYml := filepath.Join(configDir, "docker-compose.override.yml")
-		overridePathYaml := filepath.Join(configDir, "docker-compose.override.yaml")
-		if _, err := os.Stat(overridePathYml); err == nil {
-			filesToLoad = append(filesToLoad, overridePathYml)
-		} else if _, err := os.Stat(overridePathYaml); err == nil {
-			filesToLoad = append(filesToLoad, overridePathYaml)
-		}
-	}
+	filesToLoad := config.FindComposeFiles(configDir, composeFiles)
 
 	// Determine project name.
 	projectName := ""
