@@ -9,9 +9,9 @@ The root entrypoint [main.go](/main.go) compiles command routing, flag registrat
 ## Decision
 1. **Routing and Execution Segregation:**
    - Keep [main.go](/main.go) strictly for CLI definition, parsing root command flags, global initialization (e.g., config parsing, Docker client building), and printing the application version.
-   - Separate execution logic for each subcommand (`check`, `doctor`, `init`, `snapshot`, `diff`) into independent files in the root folder under the same package `main`.
+   - Separate execution logic for each subcommand (`check`, `doctor`, `init`, `snapshot`, `diff`, `fix`) into independent files in the root folder under the same package `main`.
 2. **Implementation Selection:**
-   - Adopt Option A: Move subcommand execution handlers to distinct files in the root folder (`main_check.go`, `main_doctor.go`, `main_init.go`, `main_snapshot.go`). This retains package boundaries without requiring circular imports or global state refactoring.
+   - Adopt Option A: Move subcommand execution handlers to distinct files in the root folder (`main_check.go`, `main_doctor.go`, `main_init.go`, `main_snapshot.go` [handling snapshot & diff], and `main_fix.go`). This retains package boundaries without requiring circular imports or global state refactoring.
 
 ## Consequences
 - **Context Isolation:** AI agents modifying the behavior of a specific command (e.g., `doctor`) only need to load that specific command file instead of the 800+ line `main.go`.

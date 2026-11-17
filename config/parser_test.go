@@ -589,6 +589,72 @@ DB_PASS=secret
 	}
 }
 
+func BenchmarkMergeComposeConfigs(b *testing.B) {
+	cfg1 := &ComposeConfig{
+		Name: "project",
+		Services: map[string]ComposeService{
+			"web": {
+				Image: "nginx:1.25",
+				Ports: []string{"80:80"},
+				Environment: map[string]string{
+					"ENV":  "production",
+					"PORT": "80",
+				},
+				Volumes: []ComposeVolume{
+					{Type: "bind", Source: "./web", Target: "/var/www"},
+				},
+			},
+			"db": {
+				Image: "postgres:16",
+				Ports: []string{"5432:5432"},
+				Environment: map[string]string{
+					"POSTGRES_DB": "app",
+				},
+			},
+		},
+		Volumes: map[string]interface{}{
+			"db_data": map[string]interface{}{},
+		},
+		Secrets: map[string]ComposeSecret{
+			"db_password": {File: "./secret.txt"},
+		},
+		Configs: map[string]ComposeConfigDef{
+			"app_config": {File: "./config.json"},
+		},
+	}
+
+	cfg2 := &ComposeConfig{
+		Services: map[string]ComposeService{
+			"web": {
+				Image: "nginx:alpine",
+				Ports: []string{"443:443"},
+				Environment: map[string]string{
+					"ENV":   "staging",
+					"DEBUG": "true",
+				},
+				Volumes: []ComposeVolume{
+					{Type: "bind", Source: "./web/ssl", Target: "/etc/ssl"},
+				},
+			},
+			"redis": {
+				Image: "redis:7",
+				Ports: []string{"6379:6379"},
+			},
+		},
+		Volumes: map[string]interface{}{
+			"cache_data": map[string]interface{}{},
+		},
+		Secrets: map[string]ComposeSecret{
+			"api_key": {File: "./key.txt"},
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = MergeComposeConfigs(cfg1, cfg2)
+	}
+}
+
 func TestParseEnvFiles(t *testing.T) {
 	tempDir := t.TempDir()
 	composePath := filepath.Join(tempDir, "docker-compose.yml")
