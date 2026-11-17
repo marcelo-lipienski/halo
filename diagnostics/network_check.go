@@ -226,7 +226,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 				}
 			}
 
-			// Warn on large ranges to prevent timeout. See ADR-0004.
+			// Warn on large ranges to prevent timeout and socket exhaustion. See ADR-0004 and ADR-0006.
 			if len(ports) > portRangeWarnThreshold {
 				results = append(results, output.CheckResult{
 					Group:      "Network & Port Availability",
@@ -235,6 +235,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 					Error:      fmt.Sprintf("Port range %s maps %d ports for service %s. Scanning all ports may be slow and risk exceeding the check timeout.", hostPortRange, len(ports), svcName),
 					Mitigation: fmt.Sprintf("Consider narrowing the port range in docker-compose.yml for service %s to fewer than %d ports.", svcName, portRangeWarnThreshold),
 				})
+				ports = ports[:portRangeWarnThreshold]
 			}
 
 			for _, p := range ports {

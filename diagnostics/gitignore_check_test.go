@@ -324,3 +324,42 @@ func TestCheckGitignoreSecurityServiceEnvFiles(t *testing.T) {
 		t.Error("expected custom.env from service EnvFiles to be audited by CheckGitignoreSecurity")
 	}
 }
+
+func TestCheckGitignoreSecurityServiceEnvFilesExcludesTemplateAndExample(t *testing.T) {
+	tmpDir := t.TempDir()
+	exampleEnv := filepath.Join(tmpDir, ".env.example")
+	if err := os.WriteFile(exampleEnv, []byte("PUBLIC_KEY=123"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	templateEnv := filepath.Join(tmpDir, "local.template.env")
+	if err := os.WriteFile(templateEnv, []byte("FOO=bar"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	comp := &config.ComposeConfig{
+		Services: map[string]config.ComposeService{
+			"app": {
+				EnvFiles: config.ComposeEnvFiles{
+					{File: ".env.example", Required: true, BaseDir: tmpDir},
+					{File: "local.template.env", Required: true, BaseDir: tmpDir},
+				},
+			},
+		},
+	}
+
+	e := &Engine{
+		ConfigDir: tmpDir,
+		Compose:   comp,
+		Env:       map[string]string{},
+		EnvPath:   exampleEnv,
+	}
+
+	ctx := context.Background()
+	results := e.CheckGitignoreSecurity(ctx)
+
+	for _, r := range results {
+		if strings.Contains(r.Name, ".env.example") || strings.Contains(r.Name, "local.template.env") {
+			t.Errorf("expected example and template env files to be excluded from security audit, got result: %+v", r)
+		}
+	}
+}

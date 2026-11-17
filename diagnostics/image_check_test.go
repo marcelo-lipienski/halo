@@ -323,3 +323,39 @@ ENTRYPOINT ["/app"]
 		t.Errorf("expected FROM scratch build to pass image security audit, got %s. Error: %s", results[0].Status, results[0].Error)
 	}
 }
+
+func TestCheckImageTagsWithEnvVarResolution(t *testing.T) {
+	comp := &config.ComposeConfig{
+		Services: map[string]config.ComposeService{
+			"app": {
+				Image: "${APP_IMAGE:-nginx:latest}",
+			},
+			"db": {
+				Image: "${DB_IMAGE}",
+			},
+		},
+	}
+	env := map[string]string{
+		"DB_IMAGE": "postgres:16-alpine",
+	}
+
+	engine := NewEngine(".", "docker-compose.yml", env, comp, nil)
+	results := engine.CheckImageTags()
+
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+
+	for _, r := range results {
+		if strings.Contains(r.Name, "app") {
+			if r.Status != output.CheckWarning || !strings.Contains(r.Error, "mutable tag 'latest'") {
+				t.Errorf("expected app to fail with mutable tag warning for resolved fallback image, got: %+v", r)
+			}
+		}
+		if strings.Contains(r.Name, "db") {
+			if r.Status != output.CheckPassed {
+				t.Errorf("expected db to pass with pinned tag for resolved image, got: %+v", r)
+			}
+		}
+	}
+}

@@ -71,7 +71,10 @@ func (e *Engine) CheckImageTags() []output.CheckResult {
 
 		// 1. Audit compose-level image tag.
 		if svc.Image != "" {
-			image := svc.Image
+			image := e.resolveEnvVars(svc.Image)
+			if image == "" {
+				image = svc.Image
+			}
 			isMutable, tag, _ := isMutableTag(image)
 
 			if !isMutable {
