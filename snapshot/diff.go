@@ -331,8 +331,6 @@ func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
 	return diff
 }
 
-
-
 // RenderText writes the diff report in human-readable text format.
 func RenderText(w io.Writer, diff *EnvironmentDiff, oldCreatedAt time.Time) {
 	color := output.UseColor(w)

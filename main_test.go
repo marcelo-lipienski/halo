@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/marcelo-lipienski/halo/diagnostics"
 )
 
 type safeBuffer struct {
@@ -716,6 +718,12 @@ services:
 }
 
 func TestCLIFixCommand(t *testing.T) {
+	origDockerUp := diagnostics.DockerComposeUpFunc
+	defer func() { diagnostics.DockerComposeUpFunc = origDockerUp }()
+	diagnostics.DockerComposeUpFunc = func(ctx context.Context, dir, composeFile, envFile, svcName string) error {
+		return nil
+	}
+
 	tempDir := t.TempDir()
 	composePath := filepath.Join(tempDir, "docker-compose.yml")
 	composeContent := `

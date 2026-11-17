@@ -328,16 +328,7 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 				if composeFile == "" {
 					composeFile = filepath.Join(e.ConfigDir, "docker-compose.yml")
 				}
-				upArgs := []string{"compose", "-f", composeFile}
-				if e.EnvPath != "" {
-					if _, statErr := os.Stat(e.EnvPath); statErr == nil {
-						upArgs = append(upArgs, "--env-file", e.EnvPath)
-					}
-				}
-				upArgs = append(upArgs, "up", "-d", svcName)
-				upCmd := exec.CommandContext(ctx, "docker", upArgs...)
-				upCmd.Dir = e.ConfigDir
-				if err := upCmd.Run(); err == nil {
+				if err := DockerComposeUpFunc(ctx, e.ConfigDir, composeFile, e.EnvPath, svcName); err == nil {
 					if reContainers, listErr := e.DockerCli.ContainerList(ctx, client.ContainerListOptions{All: true}); listErr == nil {
 						for _, c := range reContainers.Items {
 							cProj := strings.ToLower(c.Labels["com.docker.compose.project"])
@@ -586,4 +577,18 @@ var getOccupyingProcessFunc = func(port string, proto string) (string, int, erro
 // GetOccupyingProcess wraps getOccupyingProcessFunc.
 func GetOccupyingProcess(port string, proto string) (string, int, error) {
 	return getOccupyingProcessFunc(port, proto)
+}
+
+// DockerComposeUpFunc executes docker compose up to start a service. Wrapped in a function variable for deterministic testing. See ADR-0009.
+var DockerComposeUpFunc = func(ctx context.Context, dir, composeFile, envFile, svcName string) error {
+	upArgs := []string{"compose", "-f", composeFile}
+	if envFile != "" {
+		if _, statErr := os.Stat(envFile); statErr == nil {
+			upArgs = append(upArgs, "--env-file", envFile)
+		}
+	}
+	upArgs = append(upArgs, "up", "-d", svcName)
+	upCmd := exec.CommandContext(ctx, "docker", upArgs...)
+	upCmd.Dir = dir
+	return upCmd.Run()
 }
