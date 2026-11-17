@@ -143,3 +143,50 @@ func TestWindowsPathResolutionWithEnvVar(t *testing.T) {
 		t.Error("expected Incompatible OS Path check failure for resolved Windows path on non-Windows OS")
 	}
 }
+
+func TestEnvVarVolumeResolutionAndNamedVolumeBypass(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	content := `
+services:
+  app:
+    volumes:
+      - ${DATA_DIR}:/app/data
+      - ${NAMED_DATA}:/var/lib/data
+volumes:
+  my_named_vol:
+`
+	if err := os.WriteFile(composePath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("failed to parse compose file: %v", err)
+	}
+
+	engine := NewEngine(tempDir, composePath, map[string]string{
+		"DATA_DIR":   "./nonexistent_dir",
+		"NAMED_DATA": "my_named_vol",
+	}, comp, nil)
+
+	results := engine.checkVolumeAndPermissions(context.Background())
+
+	foundMissingBind := false
+	foundNamedVolError := false
+	for _, res := range results {
+		if strings.Contains(res.Name, "Volume source missing") && strings.Contains(res.Error, "nonexistent_dir") {
+			foundMissingBind = true
+		}
+		if strings.Contains(res.Error, "my_named_vol") {
+			foundNamedVolError = true
+		}
+	}
+
+	if !foundMissingBind {
+		t.Error("expected missing volume source check for bind mount ${DATA_DIR}")
+	}
+	if foundNamedVolError {
+		t.Error("expected top-level named volume ${NAMED_DATA} (my_named_vol) to be bypassed, but got an error")
+	}
+}

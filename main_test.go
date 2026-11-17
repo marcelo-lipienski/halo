@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -689,8 +690,12 @@ services:
 	}
 
 	// Verify file exists
-	if _, err := os.Stat(snapFile); err != nil {
+	if stat, err := os.Stat(snapFile); err != nil {
 		t.Fatalf("snapshot file was not created: %v", err)
+	} else if runtime.GOOS != "windows" {
+		if stat.Mode().Perm() != 0600 {
+			t.Errorf("expected snapshot file permissions 0600, got %o", stat.Mode().Perm())
+		}
 	}
 
 	// 2. Run diff (no changes)

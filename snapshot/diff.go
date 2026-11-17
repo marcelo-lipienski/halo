@@ -3,11 +3,22 @@ package snapshot
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"time"
 
 	"github.com/marcelo-lipienski/halo/output"
 )
+
+var sensitiveKeyRegex = regexp.MustCompile(`(?i)(KEY|SECRET|PASSWORD|PASS|TOKEN|CREDENTIAL|AUTH|CERT|JWT|API)`)
+
+// RedactIfSensitive masks sensitive environment values according to ADR-0011.
+func RedactIfSensitive(key, val string) string {
+	if val != "" && len(val) > 2 && sensitiveKeyRegex.MatchString(key) {
+		return "[REDACTED]"
+	}
+	return val
+}
 
 type FileDiff struct {
 	Path    string `json:"path"`
@@ -164,14 +175,14 @@ func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
 					File:     file,
 					Key:      key,
 					Change:   "removed",
-					OldValue: oldVal,
+					OldValue: RedactIfSensitive(key, oldVal),
 				})
 			} else if !inOld && inNew {
 				diff.Variables = append(diff.Variables, VarDiff{
 					File:     file,
 					Key:      key,
 					Change:   "added",
-					NewValue: newVal,
+					NewValue: RedactIfSensitive(key, newVal),
 				})
 			} else if inOld && inNew {
 				if oldVal != newVal {
@@ -179,8 +190,8 @@ func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
 						File:     file,
 						Key:      key,
 						Change:   "modified",
-						OldValue: oldVal,
-						NewValue: newVal,
+						OldValue: RedactIfSensitive(key, oldVal),
+						NewValue: RedactIfSensitive(key, newVal),
 					})
 				}
 			}

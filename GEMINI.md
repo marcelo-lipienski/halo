@@ -9,6 +9,9 @@
 - OS Test Hooks: Wrap OS-dependent command calls (`icacls`, `chmod`, `lsof`, `ss`, `netstat`) in package-level function variables (`fixPermissionsFunc`, `getOccupyingProcessFunc`) to enable deterministic unit testing.
 - Auto-Mitigation Engine: Map dedicated remediation commands (`halo fix`) directly to `Engine.AutoFix` with persistent `--dry-run` (`-d`) preview capabilities.
 - Standard Library Helpers: Prefer standard library functions (`strings.Contains`, `slices.Contains`) over custom slice/string iteration helpers in test code.
+- Compose Volume Classification: Treat variable volume sources (`$...`) as bind mounts during AST parsing and bypass named volumes post-expansion if defined in top-level compose volumes.
+- Volume Mount Options: Parse short-syntax volume options by splitting comma-separated flags to correctly identify read-only flags (`ro`) alongside secondary options (`z`, `delegated`).
+- Snapshot Confidentiality: Write snapshot JSON documents with 0600 file permissions and mask sensitive credential values (`[REDACTED]`) in snapshot diff output according to ADR-0011.
 
 ## 2. Testing & Quality
 - Test-First (TDD): Table-driven tests, benchmark tests (`func Benchmark...`).
