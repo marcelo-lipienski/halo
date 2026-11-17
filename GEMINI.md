@@ -15,6 +15,7 @@
 - Base Image Auditing: Exclude the Docker reserved keyword 'scratch' from mutable image tag audits to eliminate false positive warnings on distroless multi-stage builds.
 - Intra-Compose Collision Detection: Pre-validate host port assignments across compose services to catch duplicate host port definitions before Docker runtime execution.
 - File Watch Polling Efficiency: Poll known configuration file modtimes via stat syscalls and defer expensive YAML/AST re-parsing until file change boundaries are detected.
+- CLI Format Harmonization: Propagate global CLI flags (`--quiet`, `--format json`, `--dry-run`) across all command entry points to maintain uniform automation ergonomics according to ADR-0002.
 
 ## 2. Testing & Quality
 - Test-First (TDD): Table-driven tests, benchmark tests (`func Benchmark...`).

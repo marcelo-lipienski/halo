@@ -217,19 +217,6 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 			}
 			sort.Strings(keys)
 
-			isPlaceholder := func(v string) bool {
-				vl := strings.ToLower(v)
-				return strings.Contains(vl, "change-me") ||
-					strings.Contains(vl, "changeme") ||
-					strings.Contains(vl, "todo") ||
-					strings.Contains(vl, "insert") ||
-					strings.Contains(vl, "placeholder") ||
-					strings.Contains(vl, "your-") ||
-					strings.Contains(vl, "your_") ||
-					strings.Contains(vl, "replace-me") ||
-					strings.Contains(vl, "replaceme")
-			}
-
 			for _, key := range keys {
 				select {
 				case <-ctx.Done():
@@ -268,7 +255,7 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 						Error:      fmt.Sprintf("Environment variable %s is defined in .env.example but missing from .env or host environment", key),
 						Mitigation: fmt.Sprintf("Add %s=your_value to your .env file", key),
 					})
-				} else if isPlaceholder(val) {
+				} else if init_cmd.IsPlaceholder(val) {
 					results = append(results, output.CheckResult{
 						Group:      "Environmental Alignment",
 						Name:       fmt.Sprintf("Variable %s has placeholder value", key),

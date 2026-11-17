@@ -26,10 +26,16 @@ func IsPlaceholder(value string) bool {
 		return true
 	}
 	lower := strings.ToLower(val)
-	if lower == "changeme" || lower == "todo" || lower == "replace_me" {
-		return true
-	}
-	if strings.HasPrefix(lower, "your_") {
+	if strings.Contains(lower, "change-me") ||
+		strings.Contains(lower, "changeme") ||
+		strings.Contains(lower, "todo") ||
+		strings.Contains(lower, "insert") ||
+		strings.Contains(lower, "placeholder") ||
+		strings.Contains(lower, "your-") ||
+		strings.Contains(lower, "your_") ||
+		strings.Contains(lower, "replace-me") ||
+		strings.Contains(lower, "replace_me") ||
+		strings.Contains(lower, "replaceme") {
 		return true
 	}
 	if strings.HasPrefix(val, "<") && strings.HasSuffix(val, ">") {

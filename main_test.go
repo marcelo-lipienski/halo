@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -824,5 +825,167 @@ func TestCLISnapshotAndDiffEdgeCases(t *testing.T) {
 	outCombined := stdoutStr + stderrStr
 	if code != 1 || !strings.Contains(outCombined, "Snapshot file not found") {
 		t.Errorf("expected missing snapshot error, got code %d, combined output: %s", code, outCombined)
+	}
+}
+
+func TestCLIInitComprehensive(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// 1. Invalid format
+	_, stderrStr, code := runInProcess([]string{"init", "--config-dir", tempDir, "--format", "yaml"})
+	if code != 1 || !strings.Contains(stderrStr, "Invalid format") {
+		t.Errorf("expected exit code 1 on invalid format, got %d, stderr: %s", code, stderrStr)
+	}
+
+	// 2. Missing .env.example (text)
+	_, stderrStr, code = runInProcess([]string{"init", "--config-dir", tempDir})
+	if code != 1 || !strings.Contains(stderrStr, "failed to read example file") {
+		t.Errorf("expected exit code 1 on missing example, got %d, stderr: %s", code, stderrStr)
+	}
+
+	// 3. Missing .env.example (json)
+	stdoutStr, _, code := runInProcess([]string{"init", "--config-dir", tempDir, "--format", "json"})
+	if code != 1 || !strings.Contains(stdoutStr, `"system_failure"`) {
+		t.Errorf("expected system failure json on missing example, got code %d, stdout: %s", code, stdoutStr)
+	}
+
+	// 4. Missing .env.example (quiet)
+	stdoutStr, stderrStr, code = runInProcess([]string{"init", "--config-dir", tempDir, "--quiet"})
+	if code != 1 || stdoutStr != "" || stderrStr != "" {
+		t.Errorf("expected quiet failure with empty output, got code %d, stdout: %q, stderr: %q", code, stdoutStr, stderrStr)
+	}
+
+	// Create valid .env.example with regular key and placeholder
+	exampleContent := "PORT=8080\nAPI_KEY=your_api_key_here\n"
+	if err := os.WriteFile(filepath.Join(tempDir, ".env.example"), []byte(exampleContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 5. Dry-run text
+	stdoutStr, _, code = runInProcess([]string{"init", "--config-dir", tempDir, "-d"})
+	if code != 0 || !strings.Contains(stdoutStr, "[dry-run]") {
+		t.Errorf("expected dry-run success, got code %d, stdout: %s", code, stdoutStr)
+	}
+	if _, err := os.Stat(filepath.Join(tempDir, ".env")); err == nil {
+		t.Error("expected .env NOT to exist after dry-run")
+	}
+
+	// 6. Dry-run json
+	stdoutStr, _, code = runInProcess([]string{"init", "--config-dir", tempDir, "--dry-run", "--format", "json"})
+	if code != 0 || !strings.Contains(stdoutStr, `"dry_run":true`) || !strings.Contains(stdoutStr, `"placeholders":1`) {
+		t.Errorf("expected dry-run json output, got code %d, stdout: %s", code, stdoutStr)
+	}
+
+	// 7. Quiet run (should create .env with 0 stdout/stderr)
+	stdoutStr, stderrStr, code = runInProcess([]string{"init", "--config-dir", tempDir, "--quiet"})
+	if code != 0 || stdoutStr != "" || stderrStr != "" {
+		t.Errorf("expected quiet creation with 0 code and empty output, got code %d, stdout: %q, stderr: %q", code, stdoutStr, stderrStr)
+	}
+	if _, err := os.Stat(filepath.Join(tempDir, ".env")); err != nil {
+		t.Errorf("expected .env to be created by init, err: %v", err)
+	}
+
+	// Remove .env to test JSON creation
+	_ = os.Remove(filepath.Join(tempDir, ".env"))
+
+	// 8. JSON creation
+	stdoutStr, _, code = runInProcess([]string{"init", "--config-dir", tempDir, "--format", "json"})
+	if code != 0 || !strings.Contains(stdoutStr, `"status":"success"`) || !strings.Contains(stdoutStr, `"created":true`) {
+		t.Errorf("expected json created success, got code %d, stdout: %s", code, stdoutStr)
+	}
+
+	// 9. Text rerun with already-present keys and new placeholder in example
+	if err := os.WriteFile(filepath.Join(tempDir, ".env.example"), []byte("PORT=8080\nAPI_KEY=your_key\nNEW_KEY=change-me\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	stdoutStr, _, code = runInProcess([]string{"init", "--config-dir", tempDir})
+	if code != 0 || !strings.Contains(stdoutStr, "merging missing keys") || !strings.Contains(stdoutStr, "needs value") {
+		t.Errorf("expected text update output with needs value indication, got code %d, stdout: %s", code, stdoutStr)
+	}
+
+	// 10. Dry-run quiet (no output)
+	stdoutStr, stderrStr, code = runInProcess([]string{"init", "--config-dir", tempDir, "-d", "-q"})
+	if code != 0 || stdoutStr != "" || stderrStr != "" {
+		t.Errorf("expected dry-run quiet to produce empty output, got code %d, stdout: %q, stderr: %q", code, stdoutStr, stderrStr)
+	}
+}
+
+func TestCLISnapshotAndDiffEdgeCasesExtended(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// 1. Snapshot with missing configuration files
+	stdoutStr, stderrStr, code := runInProcess([]string{"snapshot", "--config-dir", tempDir})
+	combined := stdoutStr + stderrStr
+	if code != 1 || !strings.Contains(combined, "Missing configuration files") {
+		t.Errorf("expected missing configuration files failure, got code %d, combined: %s", code, combined)
+	}
+
+	// Setup valid files
+	_ = os.WriteFile(filepath.Join(tempDir, ".env"), []byte("PORT=3000\n"), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, "docker-compose.yml"), []byte("services:\n  app:\n    image: nginx:latest\n"), 0644)
+
+	// 2. Snapshot --quiet
+	snapFile := filepath.Join(tempDir, "snap-quiet.json")
+	stdoutStr, stderrStr, code = runInProcess([]string{"snapshot", snapFile, "--config-dir", tempDir, "--quiet"})
+	if code != 0 || stdoutStr != "" || stderrStr != "" {
+		t.Errorf("expected quiet snapshot with empty output, got code %d, stdout: %q, stderr: %q", code, stdoutStr, stderrStr)
+	}
+
+	// 3. Diff --quiet
+	stdoutStr, stderrStr, code = runInProcess([]string{"diff", snapFile, "--config-dir", tempDir, "--quiet"})
+	if code != 0 || stdoutStr != "" || stderrStr != "" {
+		t.Errorf("expected quiet diff with empty output, got code %d, stdout: %q, stderr: %q", code, stdoutStr, stderrStr)
+	}
+
+	// 4. Diff invalid JSON parse
+	corruptSnap := filepath.Join(tempDir, "corrupt.json")
+	_ = os.WriteFile(corruptSnap, []byte("not valid json"), 0644)
+	stdoutStr, stderrStr, code = runInProcess([]string{"diff", corruptSnap, "--config-dir", tempDir})
+	combined = stdoutStr + stderrStr
+	if code != 1 || !strings.Contains(combined, "Failed to parse snapshot file") {
+		t.Errorf("expected parse failure on corrupt snapshot, got code %d, combined: %s", code, combined)
+	}
+
+	// 5. Diff with project mismatch warning
+	mismatchedSnap := filepath.Join(tempDir, "mismatched.json")
+	snapData, _ := os.ReadFile(snapFile)
+	var snapObj map[string]interface{}
+	_ = json.Unmarshal(snapData, &snapObj)
+	snapObj["project"] = "different-project-name"
+	modifiedData, _ := json.Marshal(snapObj)
+	_ = os.WriteFile(mismatchedSnap, modifiedData, 0644)
+
+	_, stderrStr, code = runInProcess([]string{"diff", mismatchedSnap, "--config-dir", tempDir})
+	if code != 0 || !strings.Contains(stderrStr, "Comparing snapshot from project 'different-project-name'") {
+		t.Errorf("expected project mismatch warning on stderr, got code %d, stderr: %s", code, stderrStr)
+	}
+
+	// 6. Snapshot dry-run text and quiet
+	stdoutStr, _, code = runInProcess([]string{"snapshot", "--config-dir", tempDir, "-d"})
+	if code != 0 || !strings.Contains(stdoutStr, "[dry-run]") {
+		t.Errorf("expected text snapshot dry-run output, got code %d, stdout: %s", code, stdoutStr)
+	}
+	stdoutStr, stderrStr, code = runInProcess([]string{"snapshot", "--config-dir", tempDir, "-d", "-q"})
+	if code != 0 || stdoutStr != "" || stderrStr != "" {
+		t.Errorf("expected quiet snapshot dry-run output, got code %d, stdout: %q, stderr: %q", code, stdoutStr, stderrStr)
+	}
+
+	// 7. Diff invalid format
+	_, stderrStr, code = runInProcess([]string{"diff", snapFile, "--config-dir", tempDir, "--format", "xml"})
+	if code != 1 || !strings.Contains(stderrStr, "Invalid format") {
+		t.Errorf("expected exit code 1 for invalid diff format, got code %d, stderr: %s", code, stderrStr)
+	}
+
+	// 8. Diff with changes formatted as JSON
+	_ = os.WriteFile(filepath.Join(tempDir, ".env"), []byte("PORT=3000\nDIFF_KEY=added\n"), 0644)
+	stdoutStr, _, code = runInProcess([]string{"diff", snapFile, "--config-dir", tempDir, "--format", "json"})
+	if code != 2 || !strings.Contains(stdoutStr, `"variables"`) || !strings.Contains(stdoutStr, "DIFF_KEY") {
+		t.Errorf("expected exit code 2 and json diff with DIFF_KEY, got code %d, stdout: %s", code, stdoutStr)
+	}
+
+	// 9. Version command
+	stdoutStr, _, code = runInProcess([]string{"version"})
+	if code != 0 || !strings.Contains(stdoutStr, "halo version") {
+		t.Errorf("expected version output, got code %d, stdout: %s", code, stdoutStr)
 	}
 }
