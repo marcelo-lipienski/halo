@@ -168,6 +168,12 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 	servicesWithCollisions := make(map[string]bool)
 	portCollisionPassed := true
 
+	type portProtoKey struct {
+		port  int
+		proto string
+	}
+	declaredPorts := make(map[portProtoKey]string)
+
 	// Sort services for deterministic checks.
 	var svcNames []string
 	if e.Compose != nil {
@@ -244,6 +250,22 @@ func (e *Engine) checkNetworkAndPort(ctx context.Context) []output.CheckResult {
 				}
 
 				pStr := strconv.Itoa(p)
+				pKey := portProtoKey{port: p, proto: proto}
+				if firstSvc, conflict := declaredPorts[pKey]; conflict {
+					servicesWithCollisions[svcName] = true
+					servicesWithCollisions[firstSvc] = true
+					portCollisionPassed = false
+					results = append(results, output.CheckResult{
+						Group:      "Network & Port Availability",
+						Name:       fmt.Sprintf("Compose Port Collision %s:%s", svcName, pStr),
+						Status:     output.CheckFailed,
+						Error:      fmt.Sprintf("Host port %s (%s) is declared by multiple services ('%s' and '%s') in compose configuration", pStr, proto, firstSvc, svcName),
+						Mitigation: fmt.Sprintf("Assign distinct host ports to '%s' and '%s' in docker-compose.yml", firstSvc, svcName),
+					})
+					continue
+				}
+				declaredPorts[pKey] = svcName
+
 				if hasContainers && isPortBoundBySelf(p, proto, containers.Items, projectName, svcName) {
 					continue
 				}

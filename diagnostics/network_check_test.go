@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/marcelo-lipienski/halo/config"
+	"github.com/marcelo-lipienski/halo/output"
 	"github.com/moby/moby/api/types/container"
 )
 
@@ -85,5 +87,34 @@ func TestIsPortBoundBySelf(t *testing.T) {
 
 	if isPortBoundBySelf(8080, "tcp", containers, "otherproj", "web") {
 		t.Error("port 8080 under different project should not be bound by self")
+	}
+}
+
+func TestIntraComposePortCollision(t *testing.T) {
+	comp := &config.ComposeConfig{
+		Services: map[string]config.ComposeService{
+			"service-a": {
+				Ports: config.ComposePorts{"19876:80"},
+			},
+			"service-b": {
+				Ports: config.ComposePorts{"19876:8080"},
+			},
+		},
+	}
+
+	engine := NewEngine(".", "docker-compose.yml", nil, comp, nil)
+	results := engine.checkNetworkAndPort(t.Context())
+
+	foundCollision := false
+	for _, res := range results {
+		if res.Status == output.CheckFailed && res.Group == "Network & Port Availability" {
+			if res.Name == "Compose Port Collision service-b:19876" {
+				foundCollision = true
+			}
+		}
+	}
+
+	if !foundCollision {
+		t.Errorf("expected intra-compose port collision for port 19876 between service-a and service-b, got: %+v", results)
 	}
 }

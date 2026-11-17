@@ -228,41 +228,58 @@ func runWatch(ctx context.Context) {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
+	tickCount := 0
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			tickCount++
 			changed := false
-			files = getWatchFiles()
 
-			// 1. Detect deleted files.
-			currentFiles := make(map[string]bool)
-			for _, f := range files {
-				currentFiles[f] = true
-			}
-			for f := range lastMods {
-				if !currentFiles[f] {
-					delete(lastMods, f)
-					changed = true
-				}
-			}
-
-			// 2. Detect modified or new files.
-			for _, f := range files {
+			// Check known watch files using cheap stat calls without re-parsing YAML/AST
+			for f, lastMod := range lastMods {
 				stat, err := os.Stat(f)
-				var modTime time.Time
-				if err == nil {
-					modTime = stat.ModTime()
-				}
-				if !modTime.Equal(lastMods[f]) {
-					lastMods[f] = modTime
+				if err != nil {
+					if !lastMod.IsZero() {
+						changed = true
+						break
+					}
+				} else if !stat.ModTime().Equal(lastMod) {
 					changed = true
+					break
+				}
+			}
+
+			// Periodically re-scan candidate files to detect newly created compose/env files
+			if !changed && tickCount%10 == 0 {
+				candidateFiles := getWatchFiles()
+				if len(candidateFiles) != len(lastMods) {
+					changed = true
+				} else {
+					for _, cf := range candidateFiles {
+						if _, known := lastMods[cf]; !known {
+							changed = true
+							break
+						}
+					}
 				}
 			}
 
 			if changed {
-				fmt.Fprint(stderr, "\033[H\033[2J")
+				files = getWatchFiles()
+				clear(lastMods)
+				for _, f := range files {
+					if stat, err := os.Stat(f); err == nil {
+						lastMods[f] = stat.ModTime()
+					} else {
+						lastMods[f] = time.Time{}
+					}
+				}
+
+				if output.UseColor(stderr) {
+					fmt.Fprint(stderr, "\033[H\033[2J")
+				}
 				fmt.Fprintln(stderr, "Change detected! Re-running diagnostics...")
 				_ = executeCheck()
 				fmt.Fprintln(stderr, "\nWatching for configuration changes... (Press Ctrl+C to stop)")

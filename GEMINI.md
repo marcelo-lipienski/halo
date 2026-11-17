@@ -12,6 +12,9 @@
 - Compose Volume Classification: Treat variable volume sources (`$...`) as bind mounts during AST parsing and bypass named volumes post-expansion if defined in top-level compose volumes.
 - Volume Mount Options: Parse short-syntax volume options by splitting comma-separated flags to correctly identify read-only flags (`ro`) alongside secondary options (`z`, `delegated`).
 - Snapshot Confidentiality: Write snapshot JSON documents with 0600 file permissions and mask sensitive credential values (`[REDACTED]`) in snapshot diff output according to ADR-0011.
+- Base Image Auditing: Exclude the Docker reserved keyword 'scratch' from mutable image tag audits to eliminate false positive warnings on distroless multi-stage builds.
+- Intra-Compose Collision Detection: Pre-validate host port assignments across compose services to catch duplicate host port definitions before Docker runtime execution.
+- File Watch Polling Efficiency: Poll known configuration file modtimes via stat syscalls and defer expensive YAML/AST re-parsing until file change boundaries are detected.
 
 ## 2. Testing & Quality
 - Test-First (TDD): Table-driven tests, benchmark tests (`func Benchmark...`).

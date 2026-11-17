@@ -286,3 +286,40 @@ RUN echo "building"
 		t.Errorf("expected parameterized base image check to pass, got %s. Error: %s", results[0].Status, results[0].Error)
 	}
 }
+
+func TestCheckDockerfileFromScratch(t *testing.T) {
+	tempDir := t.TempDir()
+
+	dockerfileContent := `
+FROM golang:1.26-alpine AS builder
+RUN go build -o /app main.go
+
+FROM scratch
+COPY --from=builder /app /app
+ENTRYPOINT ["/app"]
+`
+	if err := os.WriteFile(filepath.Join(tempDir, "Dockerfile"), []byte(dockerfileContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	comp := &config.ComposeConfig{
+		Services: map[string]config.ComposeService{
+			"app": {
+				Build: config.ComposeBuild{
+					Context:    ".",
+					Dockerfile: "Dockerfile",
+				},
+			},
+		},
+	}
+
+	engine := NewEngine(tempDir, filepath.Join(tempDir, "docker-compose.yml"), nil, comp, nil)
+	results := engine.CheckImageTags()
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Status != output.CheckPassed {
+		t.Errorf("expected FROM scratch build to pass image security audit, got %s. Error: %s", results[0].Status, results[0].Error)
+	}
+}

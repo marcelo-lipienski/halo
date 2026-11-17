@@ -147,3 +147,41 @@ func TestCheckEnvExampleDriftAutoFixAndDryRun(t *testing.T) {
 		t.Errorf("expected .env to contain BAR=baz after auto-fix, got: %s", string(envContent))
 	}
 }
+
+func TestCheckEnvironmentalAlignmentAutoFixConsolidation(t *testing.T) {
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	examplePath := filepath.Join(tmpDir, ".env.example")
+	composePath := filepath.Join(tmpDir, "docker-compose.yml")
+
+	_ = os.WriteFile(examplePath, []byte("APP_ENV=dev\nAPI_KEY=my-secret\n"), 0644)
+	_ = os.WriteFile(envPath, []byte("APP_ENV=dev\n"), 0644)
+	_ = os.WriteFile(composePath, []byte("services:\n  app:\n    image: nginx:1.25.0\n"), 0644)
+
+	comp, err := config.ParseCompose(composePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envMap, err := config.ParseEnv(envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	engine := NewEngine(tmpDir, composePath, envMap, comp, nil)
+	engine.EnvPath = envPath
+	engine.AutoFix = true
+
+	report := engine.Run(t.Context())
+
+	for _, check := range report.Checks {
+		if check.Group == "Environmental Alignment" && check.Status == output.CheckFailed {
+			t.Errorf("unexpected failed check in Environmental Alignment after auto-fix: %+v", check)
+		}
+	}
+
+	// Verify that API_KEY was added to .env
+	updatedEnv, _ := os.ReadFile(envPath)
+	if !strings.Contains(string(updatedEnv), "API_KEY=my-secret") {
+		t.Errorf("expected API_KEY to be auto-fixed into .env, content: %s", string(updatedEnv))
+	}
+}
