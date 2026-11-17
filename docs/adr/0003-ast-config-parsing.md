@@ -9,7 +9,7 @@ Docker Compose configurations often reference environment variables with complex
 ## Decision
 1. **Parser Engine:** Utilize Go AST-based parsing libraries (specifically `mvdan.cc/sh/v3/expand`) rather than standard regex packages to expand and substitute environment variables.
 2. **File Discovery:**
-   - Locate `.env` and `docker-compose.yml` (or `docker-compose.yaml`).
+   - Locate `.env` and compose files following Compose v2 specification discovery precedence (`compose.yaml`, `compose.yml`, `docker-compose.yml`, `docker-compose.yaml`) and corresponding overrides.
    - If multiple `--compose-file` flags are supplied, merge them left-to-right following Docker Compose specification rules.
 3. **Parameter Expansion:**
    - Map out variables declared in `.env` or host env.

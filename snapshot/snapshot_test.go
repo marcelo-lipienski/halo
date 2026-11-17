@@ -309,6 +309,22 @@ func TestDiffEdgeCases(t *testing.T) {
 	}
 }
 
+func TestDiffNilSnapshots(t *testing.T) {
+	// Must not panic on nil snapshots
+	d1 := Diff(nil, nil)
+	if d1 == nil {
+		t.Error("expected non-nil diff for Diff(nil, nil)")
+	}
+	d2 := Diff(&EnvironmentSnapshot{}, nil)
+	if d2 == nil {
+		t.Error("expected non-nil diff for Diff(snap, nil)")
+	}
+	d3 := Diff(nil, &EnvironmentSnapshot{})
+	if d3 == nil {
+		t.Error("expected non-nil diff for Diff(nil, snap)")
+	}
+}
+
 func TestRenderTextFull(t *testing.T) {
 	now := time.Now()
 

@@ -62,6 +62,15 @@ type EnvironmentDiff struct {
 
 // Diff compares old and new snapshots.
 func Diff(old, new *EnvironmentSnapshot) *EnvironmentDiff {
+	if old == nil && new == nil {
+		return &EnvironmentDiff{}
+	}
+	if old == nil {
+		old = &EnvironmentSnapshot{}
+	}
+	if new == nil {
+		new = &EnvironmentSnapshot{}
+	}
 	diff := &EnvironmentDiff{
 		Project: new.Project,
 	}

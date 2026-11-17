@@ -293,6 +293,15 @@ func TestIsTTYWithFile(t *testing.T) {
 	}
 }
 
+func TestRenderTextNilReport(t *testing.T) {
+	var buf bytes.Buffer
+	// Must not panic on nil report
+	RenderText(&buf, nil, false)
+	if buf.Len() != 0 {
+		t.Errorf("expected empty output on nil report, got %q", buf.String())
+	}
+}
+
 func BenchmarkRenderText(b *testing.B) {
 	report := &DiagnosticsReport{
 		Status:     StatusHealthy,

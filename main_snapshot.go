@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/marcelo-lipienski/halo/config"
 	"github.com/marcelo-lipienski/halo/snapshot"
 )
 
@@ -30,18 +31,7 @@ func executeSnapshot(args []string) int {
 		envPath = filepath.Join(configDir, ".env")
 	}
 
-	var filesToLoad []string
-	if len(composeFiles) > 0 {
-		filesToLoad = composeFiles
-	} else {
-		composePathYml := filepath.Join(configDir, "docker-compose.yml")
-		composePathYaml := filepath.Join(configDir, "docker-compose.yaml")
-		composePath := composePathYaml
-		if _, err := os.Stat(composePathYml); err == nil {
-			composePath = composePathYml
-		}
-		filesToLoad = append(filesToLoad, composePath)
-	}
+	filesToLoad := config.FindComposeFiles(configDir, composeFiles)
 
 	var missing []string
 	if _, err := os.Stat(envPath); err != nil && os.IsNotExist(err) {

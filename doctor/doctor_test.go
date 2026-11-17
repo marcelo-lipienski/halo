@@ -2,7 +2,9 @@ package doctor
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/marcelo-lipienski/halo/config"
@@ -236,5 +238,34 @@ func TestGetHostMemoryAndFreeDiskSpace(t *testing.T) {
 	_, errInvalid := GetFreeDiskSpace(filepath.Join(tmpDir, "non-existent-sub-dir-12345"))
 	if errInvalid == nil {
 		t.Error("expected error for non-existent path in GetFreeDiskSpace")
+	}
+}
+
+func TestRunDoctorMakefileRequiredTools(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Without Makefile, make should not be required
+	reportWithout := RunDoctor(context.Background(), tmpDir, nil)
+	for _, c := range reportWithout.Checks {
+		if c.Name == "Required CLI Tools" && c.Status == output.CheckWarning {
+			if strings.Contains(c.Error, "make") {
+				t.Errorf("expected make not to be required when Makefile is absent: %s", c.Error)
+			}
+		}
+	}
+
+	// With Makefile, make should be checked
+	if err := os.WriteFile(filepath.Join(tmpDir, "Makefile"), []byte("all:\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	reportWith := RunDoctor(context.Background(), tmpDir, nil)
+	hasToolsCheck := false
+	for _, c := range reportWith.Checks {
+		if strings.HasPrefix(c.Name, "Required CLI Tools") {
+			hasToolsCheck = true
+		}
+	}
+	if !hasToolsCheck {
+		t.Error("expected Required CLI Tools check in report")
 	}
 }
