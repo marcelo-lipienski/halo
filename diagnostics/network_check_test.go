@@ -2,6 +2,7 @@ package diagnostics
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/marcelo-lipienski/halo/config"
@@ -116,5 +117,30 @@ func TestIntraComposePortCollision(t *testing.T) {
 
 	if !foundCollision {
 		t.Errorf("expected intra-compose port collision for port 19876 between service-a and service-b, got: %+v", results)
+	}
+}
+
+func TestLargePortRangeCapping(t *testing.T) {
+	comp := &config.ComposeConfig{
+		Services: map[string]config.ComposeService{
+			"app": {
+				Ports: config.ComposePorts{"20000-21000:80"}, // 1001 ports
+			},
+		},
+	}
+
+	engine := NewEngine(".", "docker-compose.yml", nil, comp, nil)
+	results := engine.checkNetworkAndPort(t.Context())
+
+	foundWarn := false
+	for _, res := range results {
+		if res.Status == output.CheckWarning && res.Group == "Network & Port Availability" {
+			if strings.Contains(res.Name, "Large port range") {
+				foundWarn = true
+			}
+		}
+	}
+	if !foundWarn {
+		t.Errorf("expected large port range warning, got: %+v", results)
 	}
 }

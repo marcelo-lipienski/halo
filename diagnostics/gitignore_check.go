@@ -61,8 +61,8 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 		}
 	}
 
-	// Include explicit e.EnvPath if it exists
-	if e.EnvPath != "" {
+	// Include explicit e.EnvPath if it exists and is not an example/template
+	if e.EnvPath != "" && !isExampleOrTemplate(e.EnvPath) {
 		if stat, err := os.Stat(e.EnvPath); err == nil && !stat.IsDir() {
 			abs, err := filepath.Abs(e.EnvPath)
 			if err == nil && !seenFiles[abs] {
@@ -77,7 +77,7 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 		for _, svc := range e.Compose.Services {
 			for _, ef := range svc.EnvFiles {
 				resolvedFile := resolveShellExpr(ef.File, e.Env)
-				if resolvedFile == "" {
+				if resolvedFile == "" || isExampleOrTemplate(resolvedFile) {
 					continue
 				}
 				envFilePath := resolvedFile
@@ -89,6 +89,9 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 					envFilePath = filepath.Join(baseDir, envFilePath)
 				}
 				envFilePath = filepath.Clean(envFilePath)
+				if isExampleOrTemplate(envFilePath) {
+					continue
+				}
 				if stat, err := os.Stat(envFilePath); err == nil && !stat.IsDir() {
 					abs, err := filepath.Abs(envFilePath)
 					if err == nil && !seenFiles[abs] {
@@ -299,6 +302,11 @@ func appendToGitignore(gitignorePath, entry string) error {
 	return err
 }
 
+func isExampleOrTemplate(path string) bool {
+	base := strings.ToLower(filepath.Base(path))
+	return strings.Contains(base, "example") || strings.Contains(base, "sample") || strings.Contains(base, "template")
+}
+
 func findEnvFiles(ctx context.Context, dir string) ([]string, error) {
 	var files []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -316,8 +324,7 @@ func findEnvFiles(ctx context.Context, dir string) ([]string, error) {
 			return nil
 		}
 		name := info.Name()
-		nameLower := strings.ToLower(name)
-		if strings.Contains(nameLower, "example") || strings.Contains(nameLower, "sample") || strings.Contains(nameLower, "template") {
+		if isExampleOrTemplate(name) {
 			return nil
 		}
 		if name == ".env" || strings.HasPrefix(name, ".env.") || strings.HasPrefix(name, ".env-") || strings.HasPrefix(name, ".env_") || name == ".halo-snapshot.json" || strings.HasSuffix(name, "-snapshot.json") {
