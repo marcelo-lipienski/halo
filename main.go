@@ -33,6 +33,12 @@ func (p *proxyWriter) Set(w io.Writer) {
 	p.w = w
 }
 
+func (p *proxyWriter) Unwrap() io.Writer {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.w
+}
+
 type safeExitFunc struct {
 	mu sync.RWMutex
 	fn func(code int)

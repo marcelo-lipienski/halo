@@ -1155,3 +1155,85 @@ func TestMergeComposeConfigsDeepCopyIsolation(t *testing.T) {
 		t.Errorf("MergeComposeConfigs mutated original config map, got: %q", cfg1.Services["app"].Environment["VAR_A"])
 	}
 }
+
+func TestParseComposeTildeVolumeBind(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+
+	composeContent := `
+services:
+  web:
+    image: nginx
+    volumes:
+      - ~/data:/app/data
+      - ~/.config/app:/root/.config
+      - type: bind
+        source: ~/mapped_data
+        target: /target
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("unexpected error parsing compose: %v", err)
+	}
+
+	web := cfg.Services["web"]
+	if len(web.Volumes) != 3 {
+		t.Fatalf("expected 3 volumes, got %d", len(web.Volumes))
+	}
+
+	v0 := web.Volumes[0]
+	if v0.Type != "bind" || v0.Source != "~/data" || v0.Target != "/app/data" {
+		t.Errorf("unexpected volume 0: %+v", v0)
+	}
+
+	v1 := web.Volumes[1]
+	if v1.Type != "bind" || v1.Source != "~/.config/app" || v1.Target != "/root/.config" {
+		t.Errorf("unexpected volume 1: %+v", v1)
+	}
+
+	v2 := web.Volumes[2]
+	if v2.Type != "bind" || v2.Source != "~/mapped_data" || v2.Target != "/target" {
+		t.Errorf("unexpected volume 2: %+v", v2)
+	}
+}
+
+func TestParseComposeSingleLetterVolume(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+
+	composeContent := `
+services:
+  web:
+    image: nginx
+    volumes:
+      - v:/app
+      - a:/data:ro
+`
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("unexpected error parsing compose: %v", err)
+	}
+
+	web := cfg.Services["web"]
+	if len(web.Volumes) != 2 {
+		t.Fatalf("expected 2 volumes, got %d", len(web.Volumes))
+	}
+
+	v0 := web.Volumes[0]
+	if v0.Type != "volume" || v0.Source != "v" || v0.Target != "/app" {
+		t.Errorf("expected named volume 'v' targeting '/app', got: %+v", v0)
+	}
+
+	v1 := web.Volumes[1]
+	if v1.Type != "volume" || v1.Source != "a" || v1.Target != "/data" || !v1.ReadOnly {
+		t.Errorf("expected read-only named volume 'a' targeting '/data', got: %+v", v1)
+	}
+}

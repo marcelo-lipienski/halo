@@ -53,8 +53,19 @@ func RenderJSON(w io.Writer, report *DiagnosticsReport) error {
 	return enc.Encode(report)
 }
 
+type unwrapper interface {
+	Unwrap() io.Writer
+}
+
 // isTTY checks if writer is a terminal.
 func isTTY(w io.Writer) bool {
+	for {
+		if u, ok := w.(unwrapper); ok {
+			w = u.Unwrap()
+		} else {
+			break
+		}
+	}
 	f, ok := w.(*os.File)
 	if !ok {
 		return false

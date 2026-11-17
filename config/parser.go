@@ -378,6 +378,18 @@ func IsWindowsPath(path string) bool {
 	return IsWindowsDrivePath(path) || strings.Contains(path, "\\")
 }
 
+func isVolumeOption(s string) bool {
+	options := strings.Split(s, ",")
+	for _, opt := range options {
+		opt = strings.TrimSpace(opt)
+		switch opt {
+		case "ro", "rw", "z", "Z", "cached", "delegated", "consistent", "rprivate", "private", "rshared", "shared", "rslave", "slave", "nocopy":
+			return true
+		}
+	}
+	return false
+}
+
 // UnmarshalYAML implements custom YAML decoding for volume mount configurations
 func (cv *ComposeVolume) UnmarshalYAML(value *yaml.Node) error {
 	switch value.Kind {
@@ -387,18 +399,34 @@ func (cv *ComposeVolume) UnmarshalYAML(value *yaml.Node) error {
 			return err
 		}
 		parts := strings.Split(s, ":")
-		if len(parts) > 1 && len(parts[0]) == 1 && ((parts[0][0] >= 'a' && parts[0][0] <= 'z') || (parts[0][0] >= 'A' && parts[0][0] <= 'Z')) {
+		isWindowsSource := len(parts) >= 3 && len(parts[0]) == 1 && ((parts[0][0] >= 'a' && parts[0][0] <= 'z') || (parts[0][0] >= 'A' && parts[0][0] <= 'Z')) && (strings.HasPrefix(parts[1], "\\") || strings.HasPrefix(parts[1], "/"))
+		if len(parts) == 3 && isVolumeOption(parts[2]) {
+			isWindowsSource = false
+		}
+		if isWindowsSource {
 			// Windows drive path: C:\path or C:/path
 			cv.Source = parts[0] + ":" + parts[1]
-			if len(parts) > 2 {
+			if len(parts) >= 4 && len(parts[2]) == 1 && ((parts[2][0] >= 'a' && parts[2][0] <= 'z') || (parts[2][0] >= 'A' && parts[2][0] <= 'Z')) && (strings.HasPrefix(parts[3], "\\") || strings.HasPrefix(parts[3], "/")) {
+				// Windows drive path container target: D:\path or D:/path
+				cv.Target = parts[2] + ":" + parts[3]
+				if len(parts) > 4 {
+					options := strings.Split(parts[4], ",")
+					for _, opt := range options {
+						if strings.TrimSpace(opt) == "ro" {
+							cv.ReadOnly = true
+							break
+						}
+					}
+				}
+			} else {
 				cv.Target = parts[2]
-			}
-			if len(parts) > 3 {
-				options := strings.Split(parts[3], ",")
-				for _, opt := range options {
-					if strings.TrimSpace(opt) == "ro" {
-						cv.ReadOnly = true
-						break
+				if len(parts) > 3 {
+					options := strings.Split(parts[3], ",")
+					for _, opt := range options {
+						if strings.TrimSpace(opt) == "ro" {
+							cv.ReadOnly = true
+							break
+						}
 					}
 				}
 			}
@@ -431,7 +459,7 @@ func (cv *ComposeVolume) UnmarshalYAML(value *yaml.Node) error {
 				cv.Source = s
 				cv.Target = ""
 			}
-		} else if !strings.HasPrefix(cv.Source, "/") && !strings.HasPrefix(cv.Source, "./") && !strings.HasPrefix(cv.Source, "../") && cv.Source != "~" && cv.Source != "." && !IsWindowsDrivePath(cv.Source) && !strings.HasPrefix(cv.Source, "$") {
+		} else if !strings.HasPrefix(cv.Source, "/") && !strings.HasPrefix(cv.Source, "./") && !strings.HasPrefix(cv.Source, "../") && !strings.HasPrefix(cv.Source, "~") && cv.Source != "." && !IsWindowsDrivePath(cv.Source) && !strings.HasPrefix(cv.Source, "$") {
 			cv.Type = "volume"
 		}
 	case yaml.MappingNode:
@@ -450,7 +478,7 @@ func (cv *ComposeVolume) UnmarshalYAML(value *yaml.Node) error {
 		cv.ReadOnly = m.ReadOnly
 		if cv.Type == "" {
 			cv.Type = "bind"
-			if !strings.HasPrefix(cv.Source, "/") && !strings.HasPrefix(cv.Source, "./") && !strings.HasPrefix(cv.Source, "../") && cv.Source != "~" && cv.Source != "." && !IsWindowsDrivePath(cv.Source) && !strings.HasPrefix(cv.Source, "$") {
+			if !strings.HasPrefix(cv.Source, "/") && !strings.HasPrefix(cv.Source, "./") && !strings.HasPrefix(cv.Source, "../") && !strings.HasPrefix(cv.Source, "~") && cv.Source != "." && !IsWindowsDrivePath(cv.Source) && !strings.HasPrefix(cv.Source, "$") {
 				cv.Type = "volume"
 			}
 		}
