@@ -269,7 +269,7 @@ func findEnvFiles(ctx context.Context, dir string) ([]string, error) {
 		if strings.Contains(nameLower, "example") || strings.Contains(nameLower, "sample") || strings.Contains(nameLower, "template") {
 			return nil
 		}
-		if name == ".env" || strings.HasPrefix(name, ".env.") || strings.HasPrefix(name, ".env-") || strings.HasPrefix(name, ".env_") {
+		if name == ".env" || strings.HasPrefix(name, ".env.") || strings.HasPrefix(name, ".env-") || strings.HasPrefix(name, ".env_") || name == ".halo-snapshot.json" || strings.HasSuffix(name, "-snapshot.json") {
 			files = append(files, path)
 		}
 		return nil

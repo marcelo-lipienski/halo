@@ -503,6 +503,62 @@ func TestCreateSnapshotProjectNameAndOverrideYaml(t *testing.T) {
 	}
 }
 
+func TestSensitiveVariableRedaction(t *testing.T) {
+	cases := []struct {
+		key      string
+		val      string
+		expected string
+	}{
+		{"DB_PASSWORD", "supersecret", "[REDACTED]"},
+		{"AWS_SECRET_KEY", "AKIAIOSFODNN7EXAMPLE", "[REDACTED]"},
+		{"AUTH_TOKEN", "eyJhbGciOi...", "[REDACTED]"},
+		{"API_KEY", "1234567890", "[REDACTED]"},
+		{"JWT_CERT", "certcontent", "[REDACTED]"},
+		{"DB_PASS", "ok", "ok"}, // length <= 2 excluded per ADR-0011
+		{"PORT", "8080", "8080"},
+		{"APP_ENV", "production", "production"},
+		{"DEBUG", "true", "true"},
+	}
+
+	for _, tc := range cases {
+		redacted := RedactIfSensitive(tc.key, tc.val)
+		if redacted != tc.expected {
+			t.Errorf("RedactIfSensitive(%q, %q) = %q, expected %q", tc.key, tc.val, redacted, tc.expected)
+		}
+	}
+
+	oldSnap := &EnvironmentSnapshot{
+		CreatedAt: time.Now(),
+		Variables: map[string]map[string]string{
+			".env": {
+				"DB_PASS": "oldpassword123",
+				"PORT":    "8080",
+			},
+		},
+	}
+	newSnap := &EnvironmentSnapshot{
+		CreatedAt: time.Now(),
+		Variables: map[string]map[string]string{
+			".env": {
+				"DB_PASS": "newpassword456",
+				"PORT":    "9000",
+			},
+		},
+	}
+
+	diff := Diff(oldSnap, newSnap)
+	var buf bytes.Buffer
+	RenderText(&buf, diff, oldSnap.CreatedAt)
+	rendered := buf.String()
+
+	if bytes.Contains(buf.Bytes(), []byte("oldpassword123")) || bytes.Contains(buf.Bytes(), []byte("newpassword456")) {
+		t.Errorf("RenderText leaked plaintext password: %s", rendered)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("[REDACTED]")) {
+		t.Errorf("RenderText expected [REDACTED] marker, got: %s", rendered)
+	}
+}
+
 func BenchmarkDiff(b *testing.B) {
 	now := time.Now()
 	oldSnap := &EnvironmentSnapshot{

@@ -7,3 +7,7 @@ halo.exe
 *.out
 *.log
 .gemini/
+
+# Snapshots
+.halo-snapshot.json
+*-snapshot.json

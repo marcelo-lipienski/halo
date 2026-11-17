@@ -284,6 +284,13 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				continue
 			}
 
+			// Skip if resolved source matches a declared top-level named volume.
+			if e.Compose != nil && e.Compose.Volumes != nil {
+				if _, isNamed := e.Compose.Volumes[resolvedSource]; isNamed {
+					continue
+				}
+			}
+
 			// Cross-platform path convention check on resolved path.
 			isWindowsPath := config.IsWindowsPath(resolvedSource)
 			if runtime.GOOS != "windows" && isWindowsPath {

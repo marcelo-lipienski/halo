@@ -95,7 +95,7 @@ func executeSnapshot(args []string) int {
 		return 1
 	}
 
-	if err := os.WriteFile(snapFile, data, 0644); err != nil {
+	if err := os.WriteFile(snapFile, data, 0600); err != nil {
 		if !quiet {
 			if format == "json" {
 				renderSystemFailure("json", verbose, err.Error(), fmt.Sprintf("Verify write permission to file path: %s", snapFile))

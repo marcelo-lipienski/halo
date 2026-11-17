@@ -1055,3 +1055,69 @@ func TestFindComposeFiles(t *testing.T) {
 		t.Errorf("expected %v with override, got %v", expectedOverride, resOverride)
 	}
 }
+
+func TestVolumeParsingOptionsAndEnvVars(t *testing.T) {
+	tempDir := t.TempDir()
+	composePath := filepath.Join(tempDir, "docker-compose.yml")
+	content := `
+services:
+  web:
+    volumes:
+      - ${HOST_DIR}:/app/data:ro,z
+      - $LOG_DIR:/var/log:ro,delegated
+      - ./src:/app/src:ro
+      - data-volume:/data
+      - type: bind
+        source: ${BIND_DIR}
+        target: /bind
+`
+	if err := os.WriteFile(composePath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write compose file: %v", err)
+	}
+
+	cfg, err := ParseCompose(composePath)
+	if err != nil {
+		t.Fatalf("unexpected error parsing compose: %v", err)
+	}
+
+	web := cfg.Services["web"]
+	if len(web.Volumes) != 5 {
+		t.Fatalf("expected 5 volumes, got %d", len(web.Volumes))
+	}
+
+	// 1. ${HOST_DIR}:/app/data:ro,z
+	v1 := web.Volumes[0]
+	if v1.Type != "bind" {
+		t.Errorf("expected v1 type 'bind', got %q", v1.Type)
+	}
+	if !v1.ReadOnly {
+		t.Errorf("expected v1 ReadOnly true for 'ro,z', got false")
+	}
+
+	// 2. $LOG_DIR:/var/log:ro,delegated
+	v2 := web.Volumes[1]
+	if v2.Type != "bind" {
+		t.Errorf("expected v2 type 'bind', got %q", v2.Type)
+	}
+	if !v2.ReadOnly {
+		t.Errorf("expected v2 ReadOnly true for 'ro,delegated', got false")
+	}
+
+	// 3. ./src:/app/src:ro
+	v3 := web.Volumes[2]
+	if v3.Type != "bind" || !v3.ReadOnly {
+		t.Errorf("expected v3 bind and ReadOnly true, got type=%q ReadOnly=%v", v3.Type, v3.ReadOnly)
+	}
+
+	// 4. data-volume:/data
+	v4 := web.Volumes[3]
+	if v4.Type != "volume" {
+		t.Errorf("expected v4 type 'volume', got %q", v4.Type)
+	}
+
+	// 5. type: bind, source: ${BIND_DIR}
+	v5 := web.Volumes[4]
+	if v5.Type != "bind" {
+		t.Errorf("expected v5 type 'bind', got %q", v5.Type)
+	}
+}
