@@ -2059,9 +2059,14 @@ services:
 
 	missingPath := filepath.Join(tempDir, "data")
 
-	// Save original promptConfirm func and restore after test
+	// Save original promptConfirm and DockerComposeUpFunc and restore after test
 	origPromptConfirm := promptConfirm
 	defer func() { promptConfirm = origPromptConfirm }()
+	origDockerUp := DockerComposeUpFunc
+	defer func() { DockerComposeUpFunc = origDockerUp }()
+	DockerComposeUpFunc = func(ctx context.Context, dir, composeFile, envFile, svcName string) error {
+		return nil
+	}
 
 	// Case 1: Interactive mode, user says YES (true) -> should fix and create directory
 	promptConfirm = func(question string) bool {
