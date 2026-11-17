@@ -2,6 +2,7 @@ package diagnostics
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -89,7 +90,12 @@ func TestIsReadableAndWritable(t *testing.T) {
 
 func TestPromptConfirm(t *testing.T) {
 	origStdin := os.Stdin
-	defer func() { os.Stdin = origStdin }()
+	origWriter := promptWriter
+	defer func() {
+		os.Stdin = origStdin
+		promptWriter = origWriter
+	}()
+	promptWriter = io.Discard
 
 	r, w, err := os.Pipe()
 	if err != nil {

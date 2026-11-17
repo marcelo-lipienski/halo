@@ -3,6 +3,7 @@ package diagnostics
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -241,5 +242,45 @@ func TestQuoteMetaByte(t *testing.T) {
 	got := buf.String()
 	if !strings.Contains(got, "\\+") || !strings.Contains(got, "\\?") || !strings.Contains(got, "\\*") {
 		t.Errorf("quoteMetaByte failed to escape special characters, got %q", got)
+	}
+}
+
+func TestCheckGitignoreSecurityTrackedRepo(t *testing.T) {
+	tmpDir := t.TempDir()
+	cmdInit := exec.Command("git", "init")
+	cmdInit.Dir = tmpDir
+	if err := cmdInit.Run(); err != nil {
+		t.Skip("git not available in test environment")
+	}
+
+	envFile := filepath.Join(tmpDir, ".env")
+	if err := os.WriteFile(envFile, []byte("SECRET=1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmdAdd := exec.Command("git", "add", ".env")
+	cmdAdd.Dir = tmpDir
+	if err := cmdAdd.Run(); err != nil {
+		t.Skip("git add failed")
+	}
+
+	ctx := context.Background()
+	e := &Engine{
+		ConfigDir: tmpDir,
+		Compose:   &config.ComposeConfig{},
+		Env:       map[string]string{},
+		DryRun:    true,
+	}
+
+	res := e.CheckGitignoreSecurity(ctx)
+	if len(res) == 0 || res[0].Status != output.CheckFailed || !strings.Contains(res[0].Error, "[Dry-Run]") {
+		t.Errorf("expected tracked env file failure with [Dry-Run], got: %+v", res)
+	}
+
+	e.DryRun = false
+	e.AutoFix = true
+	resFix := e.CheckGitignoreSecurity(ctx)
+	if len(resFix) == 0 || resFix[0].Status != output.CheckPassed || !strings.Contains(resFix[0].Name, "Tracked Env File auto-fixed") {
+		t.Errorf("expected auto-fixed tracked env file, got: %+v", resFix)
 	}
 }

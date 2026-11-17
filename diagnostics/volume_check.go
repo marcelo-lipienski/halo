@@ -18,13 +18,16 @@ import (
 	"github.com/marcelo-lipienski/halo/output"
 )
 
-var promptMutex sync.Mutex
+var (
+	promptMutex  sync.Mutex
+	promptWriter io.Writer = os.Stderr
+)
 
 var promptConfirm = func(question string) bool {
 	promptMutex.Lock()
 	defer promptMutex.Unlock()
 
-	fmt.Fprintf(os.Stderr, "%s [y/N]: ", question)
+	fmt.Fprintf(promptWriter, "%s [y/N]: ", question)
 	reader := bufio.NewReader(os.Stdin)
 	response, err := reader.ReadString('\n')
 	if err != nil {
