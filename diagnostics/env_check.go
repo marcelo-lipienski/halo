@@ -312,6 +312,46 @@ func (e *Engine) checkEnvironmentalAlignment(ctx context.Context) []output.Check
 		examplePath2 := filepath.Join(filepath.Dir(envPath), ".env.example")
 		driftResults, _ := e.CheckEnvExampleDrift(envPath, examplePath2)
 		results = append(results, driftResults...)
+
+		// If drift was auto-fixed, clear any preceding "Variable %s missing from .env" failures.
+		driftFixed := false
+		for _, dr := range driftResults {
+			if dr.Name == ".env.example Drift auto-fixed" && dr.Status == output.CheckPassed {
+				driftFixed = true
+				break
+			}
+		}
+		if driftFixed {
+			for i := range results {
+				if results[i].Group == "Environmental Alignment" &&
+					results[i].Status == output.CheckFailed &&
+					strings.Contains(results[i].Name, "missing from .env") {
+					results[i].Status = output.CheckPassed
+					results[i].Name = strings.Replace(results[i].Name, "missing from .env", "auto-fixed from .env.example", 1)
+					results[i].Error = ""
+					results[i].Mitigation = ""
+				}
+			}
+			hasFailure := false
+			hasSchemaPassed := false
+			for _, r := range results {
+				if r.Group == "Environmental Alignment" {
+					if r.Status == output.CheckFailed {
+						hasFailure = true
+					}
+					if r.Name == "Schema Alignment Check" && r.Status == output.CheckPassed {
+						hasSchemaPassed = true
+					}
+				}
+			}
+			if !hasFailure && !hasSchemaPassed && hasSchemaFile {
+				results = append(results, output.CheckResult{
+					Group:  "Environmental Alignment",
+					Name:   "Schema Alignment Check",
+					Status: output.CheckPassed,
+				})
+			}
+		}
 	}
 
 	imageResults := e.CheckImageTags()

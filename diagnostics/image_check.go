@@ -16,6 +16,10 @@ func isMutableTag(image string) (bool, string, string) {
 	if strings.Contains(image, "@sha256:") {
 		return false, "", ""
 	}
+	// Docker reserved empty base image 'scratch' has no versions or tags.
+	if strings.EqualFold(image, "scratch") {
+		return false, "", ""
+	}
 	// Skip parameterized variable image references (e.g. $BASE_IMAGE or ${BASE_IMAGE}).
 	if strings.HasPrefix(image, "$") || strings.HasPrefix(image, "${") {
 		return false, "", ""
