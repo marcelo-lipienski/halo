@@ -3,6 +3,7 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -290,6 +291,42 @@ func TestIsTTYWithFile(t *testing.T) {
 	// A regular temp file is an *os.File but not a CharDevice (TTY), so UseColor returns false
 	if UseColor(tmpFile) {
 		t.Error("expected UseColor to return false for regular file")
+	}
+}
+
+type mockUnwrapper struct {
+	inner io.Writer
+}
+
+func (m *mockUnwrapper) Write(p []byte) (n int, err error) {
+	return m.inner.Write(p)
+}
+
+func (m *mockUnwrapper) Unwrap() io.Writer {
+	return m.inner
+}
+
+func TestIsTTYWithUnwrapper(t *testing.T) {
+	var buf bytes.Buffer
+	wrapped := &mockUnwrapper{inner: &buf}
+	if isTTY(wrapped) {
+		t.Error("expected isTTY to return false for wrapped buffer")
+	}
+
+	tmpFile, err := os.CreateTemp(t.TempDir(), "tty_wrapped_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tmpFile.Close() }()
+
+	wrappedFile := &mockUnwrapper{inner: tmpFile}
+	if isTTY(wrappedFile) {
+		t.Error("expected isTTY to return false for wrapped non-char-device file")
+	}
+
+	doubleWrapped := &mockUnwrapper{inner: wrappedFile}
+	if isTTY(doubleWrapped) {
+		t.Error("expected isTTY to return false for double wrapped non-char-device file")
 	}
 }
 

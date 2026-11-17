@@ -995,3 +995,17 @@ func TestCLISnapshotAndDiffEdgeCasesExtended(t *testing.T) {
 		t.Errorf("expected exit code 2 and dry-run output for check with --fix, got code %d, stdout: %s", code, stdoutStr)
 	}
 }
+
+func TestProxyWriterUnwrap(t *testing.T) {
+	orig := os.Stdout
+	pw := &proxyWriter{w: orig}
+	if pw.Unwrap() != orig {
+		t.Errorf("expected Unwrap to return original writer")
+	}
+
+	var buf bytes.Buffer
+	pw.Set(&buf)
+	if pw.Unwrap() != &buf {
+		t.Errorf("expected Unwrap to return updated buffer")
+	}
+}
