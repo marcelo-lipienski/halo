@@ -1843,6 +1843,12 @@ services:
 }
 
 func TestEngineServiceEnvFile(t *testing.T) {
+	origDockerUp := DockerComposeUpFunc
+	defer func() { DockerComposeUpFunc = origDockerUp }()
+	DockerComposeUpFunc = func(ctx context.Context, dir, composeFile, envFile, svcName string) error {
+		return nil
+	}
+
 	tempDir := t.TempDir()
 	composePath := filepath.Join(tempDir, "docker-compose.yml")
 	composeContent := `
@@ -1866,9 +1872,30 @@ services:
 		t.Fatalf("failed to parse compose: %v", err)
 	}
 
+	projName := filepath.Base(tempDir)
 	mockDocker := &mockDockerClient{
 		listFunc: func(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
-			return client.ContainerListResult{}, nil
+			return client.ContainerListResult{
+				Items: []container.Summary{
+					{
+						ID:    "mock-id",
+						State: "running",
+						Labels: map[string]string{
+							"com.docker.compose.project": projName,
+							"com.docker.compose.service": "app",
+						},
+					},
+				},
+			}, nil
+		},
+		inspectFunc: func(ctx context.Context, containerID string, options client.ContainerInspectOptions) (client.ContainerInspectResult, error) {
+			return client.ContainerInspectResult{
+				Container: container.InspectResponse{
+					State: &container.State{
+						Running: true,
+					},
+				},
+			}, nil
 		},
 	}
 
