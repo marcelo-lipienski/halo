@@ -252,3 +252,37 @@ RUN echo "building"
 		t.Errorf("expected multi-stage check to pass, got %s. Error: %s", results[0].Status, results[0].Error)
 	}
 }
+
+func TestCheckDockerfileVariableBaseImage(t *testing.T) {
+	tempDir := t.TempDir()
+
+	dockerfileContent := `
+ARG BASE_IMAGE=node:20-alpine
+FROM ${BASE_IMAGE}
+RUN echo "building"
+`
+	if err := os.WriteFile(filepath.Join(tempDir, "Dockerfile.arg"), []byte(dockerfileContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	comp := &config.ComposeConfig{
+		Services: map[string]config.ComposeService{
+			"app": {
+				Build: config.ComposeBuild{
+					Context:    ".",
+					Dockerfile: "Dockerfile.arg",
+				},
+			},
+		},
+	}
+
+	engine := NewEngine(tempDir, filepath.Join(tempDir, "docker-compose.yml"), nil, comp, nil)
+	results := engine.CheckImageTags()
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Status != output.CheckPassed {
+		t.Errorf("expected parameterized base image check to pass, got %s. Error: %s", results[0].Status, results[0].Error)
+	}
+}
