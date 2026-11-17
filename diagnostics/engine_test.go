@@ -1550,6 +1550,42 @@ services:
 	}
 }
 
+func BenchmarkRedactReport(b *testing.B) {
+	engine := &Engine{
+		Env: map[string]string{
+			"DB_PASSWORD":   "super_secret_pw_123",
+			"API_KEY":       "key-xyz-9876543210",
+			"AUTH_SECRET":   "jwt-secret-token-abcdef",
+			"SERVER_PORT":   "8080",
+			"DATABASE_USER": "admin_user",
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		report := &output.DiagnosticsReport{
+			Status: output.StatusEnvironmentBroken,
+			Checks: []output.CheckResult{
+				{
+					Group:      "Volume & File Permissions",
+					Name:       "Failed with key-xyz-9876543210",
+					Status:     output.CheckFailed,
+					Error:      "Password super_secret_pw_123 rejected by authentication service",
+					Mitigation: "Rotate secret jwt-secret-token-abcdef and update environment",
+				},
+				{
+					Group:      "Environmental Alignment",
+					Name:       "Check database access",
+					Status:     output.CheckFailed,
+					Error:      "DB_PASSWORD=super_secret_pw_123 is invalid for admin_user",
+					Mitigation: "Check DB_PASSWORD in configuration",
+				},
+			},
+		}
+		engine.redactReport(report)
+	}
+}
+
 // TestCheckReadPermissionAutoFix verifies that checkReadPermission correctly:
 //  1. Records the original file permissions in the result when auto-fix succeeds.
 //  2. Reports a CheckFailed when chmod succeeds but readability still cannot be

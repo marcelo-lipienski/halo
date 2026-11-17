@@ -19,4 +19,4 @@ Incorrect file permissions or missing bind-mount host directories are a frequent
 ## Consequences
 - Reduces onboarding friction by fixing permissions directly.
 - `--dry-run` and `--interactive` prevent unintended modifications to sensitive directories.
-- Auto-fix only applies to volume/permissions scope; it does not change `.env` keys or code files.
+- Auto-fix covers file and volume permissions, `.env.example` configuration drift consolidation, gitignore protection, and container recovery; it does not alter source code files.

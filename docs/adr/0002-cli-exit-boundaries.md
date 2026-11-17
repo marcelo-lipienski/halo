@@ -13,6 +13,9 @@ The command structure and flags for **halo** are defined as follows:
 - `halo check`: Executes the diagnostic suite once and exits. (This is the default command).
 - `halo doctor`: Scans system-level host prerequisites (Docker, path, memory, disk).
 - `halo init`: Merges `.env.example` keys into `.env` (or copies it verbatim).
+- `halo snapshot`: Captures diagnostic system state and writes a point-in-time JSON snapshot (see ADR-0011).
+- `halo diff <snapshot-a> <snapshot-b>`: Compares two snapshot files and outputs added, removed, or changed checks.
+- `halo fix`: Shorthand command to run diagnostics with automatic remediations enabled (`--fix`).
 - `halo version`: Outputs the CLI build version, runtime details, and git commit hash.
 
 ### Global Flags
