@@ -112,13 +112,16 @@ func (e *Engine) Run(ctx context.Context) *output.DiagnosticsReport {
 	return report
 }
 
-var sensitiveKeyRegex = regexp.MustCompile(`(?i)(KEY|SECRET|PASSWORD|PASS|TOKEN|CREDENTIAL|AUTH|CERT|JWT|API)`)
+var sensitiveKeyRegex = regexp.MustCompile(`(?i)(KEY|SECRET|PASSWORD|PASSWD|PASS|_PWD|^PWD_|TOKEN|CREDENTIAL|CRED|AUTH|CERT|JWT|API)`)
 
 func (e *Engine) getSensitiveValues() []string {
 	var values []string
 
 	// Scan project-level env.
 	for k, v := range e.Env {
+		if k == "PWD" || k == "OLDPWD" {
+			continue
+		}
 		if sensitiveKeyRegex.MatchString(k) && v != "" && len(v) > 2 {
 			values = append(values, v)
 		}
@@ -129,6 +132,9 @@ func (e *Engine) getSensitiveValues() []string {
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) == 2 {
 			k, v := parts[0], parts[1]
+			if k == "PWD" || k == "OLDPWD" {
+				continue
+			}
 			if sensitiveKeyRegex.MatchString(k) && v != "" && len(v) > 2 {
 				values = append(values, v)
 			}

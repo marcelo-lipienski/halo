@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -366,6 +367,16 @@ func CreateSnapshot(ctx context.Context, configDir string, envPath string, compo
 			}
 		}
 	}
+
+	sort.Slice(portsSnap, func(i, j int) bool {
+		if portsSnap[i].Service != portsSnap[j].Service {
+			return portsSnap[i].Service < portsSnap[j].Service
+		}
+		if portsSnap[i].HostPort != portsSnap[j].HostPort {
+			return portsSnap[i].HostPort < portsSnap[j].HostPort
+		}
+		return portsSnap[i].Protocol < portsSnap[j].Protocol
+	})
 
 	snap := &EnvironmentSnapshot{
 		CreatedAt: time.Now(),

@@ -51,6 +51,57 @@ func (e *Engine) CheckGitignoreSecurity(ctx context.Context) []output.CheckResul
 		return results
 	}
 
+	seenFiles := make(map[string]bool)
+	var allEnvFiles []string
+	for _, f := range envFiles {
+		abs, err := filepath.Abs(f)
+		if err == nil && !seenFiles[abs] {
+			seenFiles[abs] = true
+			allEnvFiles = append(allEnvFiles, f)
+		}
+	}
+
+	// Include explicit e.EnvPath if it exists
+	if e.EnvPath != "" {
+		if stat, err := os.Stat(e.EnvPath); err == nil && !stat.IsDir() {
+			abs, err := filepath.Abs(e.EnvPath)
+			if err == nil && !seenFiles[abs] {
+				seenFiles[abs] = true
+				allEnvFiles = append(allEnvFiles, e.EnvPath)
+			}
+		}
+	}
+
+	// Include service env_file declarations
+	if e.Compose != nil {
+		for _, svc := range e.Compose.Services {
+			for _, ef := range svc.EnvFiles {
+				resolvedFile := resolveShellExpr(ef.File, e.Env)
+				if resolvedFile == "" {
+					continue
+				}
+				envFilePath := resolvedFile
+				if !filepath.IsAbs(envFilePath) {
+					baseDir := ef.BaseDir
+					if baseDir == "" {
+						baseDir = e.ConfigDir
+					}
+					envFilePath = filepath.Join(baseDir, envFilePath)
+				}
+				envFilePath = filepath.Clean(envFilePath)
+				if stat, err := os.Stat(envFilePath); err == nil && !stat.IsDir() {
+					abs, err := filepath.Abs(envFilePath)
+					if err == nil && !seenFiles[abs] {
+						seenFiles[abs] = true
+						allEnvFiles = append(allEnvFiles, envFilePath)
+					}
+				}
+			}
+		}
+	}
+
+	envFiles = allEnvFiles
+
 	if len(envFiles) == 0 {
 		results = append(results, output.CheckResult{
 			Group:  "Security Audits",
@@ -244,7 +295,7 @@ func appendToGitignore(gitignorePath, entry string) error {
 		}
 	}
 
-	_, err = f.WriteString(entry + "\n")
+	_, err = f.WriteString(filepath.ToSlash(entry) + "\n")
 	return err
 }
 

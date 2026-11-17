@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"runtime"
 	"runtime/debug"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/marcelo-lipienski/halo/output"
 	"github.com/spf13/cobra"
@@ -124,7 +126,9 @@ func newRootCmd() *cobra.Command {
 		Long:  `halo is a lightweight CLI tool to diagnose and validate local development environments by analyzing environment configurations and active Docker state.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if watch {
-				runWatch(context.Background())
+				ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+				defer stop()
+				runWatch(ctx)
 			} else {
 				osExit.Exit(executeCheck())
 			}
@@ -137,6 +141,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().StringVarP(&format, "format", "f", "text", "Output format for results (text|json)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enables debug logging")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppresses all standard output")
+	rootCmd.PersistentFlags().BoolVar(&fix, "fix", false, "Automatically mitigate configuration, file permission, and directory issues")
 	rootCmd.PersistentFlags().BoolVarP(&dryRun, "dry-run", "d", false, "Preview changes when running with fix command without modifying the filesystem")
 	rootCmd.PersistentFlags().BoolVarP(&interactive, "interactive", "i", false, "Confirm mitigation steps interactively before applying them")
 	rootCmd.PersistentFlags().BoolVarP(&watch, "watch", "w", false, "Watch configuration files for changes and automatically re-run checks")
@@ -146,7 +151,9 @@ func newRootCmd() *cobra.Command {
 		Short: "Run the diagnostic suite",
 		Run: func(cmd *cobra.Command, args []string) {
 			if watch {
-				runWatch(context.Background())
+				ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+				defer stop()
+				runWatch(ctx)
 			} else {
 				osExit.Exit(executeCheck())
 			}
@@ -158,7 +165,9 @@ func newRootCmd() *cobra.Command {
 		Short: "Automatically mitigate configuration, file permission, and missing directory/file issues",
 		Run: func(cmd *cobra.Command, args []string) {
 			if watch {
-				runWatch(context.Background())
+				ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+				defer stop()
+				runWatch(ctx)
 			} else {
 				osExit.Exit(executeFix())
 			}
