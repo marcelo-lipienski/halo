@@ -25,6 +25,11 @@ func TestMatchGitignorePattern(t *testing.T) {
 		{"*.env", "sub/my.env", true},
 		{"config/*.env", "config/my.env", true},
 		{"config/*.env", "sub/config/my.env", false},
+		{"dist/", "dist/.env", true},
+		{"dist/", "sub/dist/.env", true},
+		{"/dist/", "dist/.env", true},
+		{"/dist/", "sub/dist/.env", false},
+		{"dist/", "other/file.txt", false},
 		{"!/.env", ".env", true}, // negation pattern matches the path
 	}
 

@@ -1,10 +1,15 @@
 package diagnostics
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/marcelo-lipienski/halo/config"
+	"github.com/marcelo-lipienski/halo/output"
 )
 
 func TestFixPermissionsMocking(t *testing.T) {
@@ -99,5 +104,42 @@ func TestPromptConfirm(t *testing.T) {
 
 	if !promptConfirm("Test question?") {
 		t.Error("expected promptConfirm to return true for 'y\\n'")
+	}
+}
+
+func TestWindowsPathResolutionWithEnvVar(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping non-Windows check on Windows")
+	}
+	tempDir := t.TempDir()
+	comp := &config.ComposeConfig{
+		Services: map[string]config.ComposeService{
+			"app": {
+				Volumes: []config.ComposeVolume{
+					{
+						Source: "${WIN_DIR}",
+						Target: "/app",
+						Type:   "bind",
+					},
+				},
+			},
+		},
+	}
+	engine := NewEngine(tempDir, filepath.Join(tempDir, "docker-compose.yml"), map[string]string{
+		"WIN_DIR": `C:\data`,
+	}, comp, nil)
+
+	results := engine.checkVolumeAndPermissions(context.Background())
+	found := false
+	for _, res := range results {
+		if strings.Contains(res.Name, "Incompatible OS Path") && res.Status == output.CheckFailed {
+			found = true
+			if !strings.Contains(res.Error, `C:\data`) {
+				t.Errorf("expected error to mention resolved path C:\\data, got: %s", res.Error)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected Incompatible OS Path check failure for resolved Windows path on non-Windows OS")
 	}
 }

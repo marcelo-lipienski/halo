@@ -279,23 +279,22 @@ func (e *Engine) checkVolumeAndPermissions(ctx context.Context) []output.CheckRe
 				continue
 			}
 
-			// Cross-platform path convention check.
-			isWindowsPath := config.IsWindowsPath(vol.Source)
+			resolvedSource := e.resolveEnvVars(vol.Source)
+			if resolvedSource == "" {
+				continue
+			}
 
+			// Cross-platform path convention check on resolved path.
+			isWindowsPath := config.IsWindowsPath(resolvedSource)
 			if runtime.GOOS != "windows" && isWindowsPath {
 				volumeCheckPassed = false
 				results = append(results, output.CheckResult{
 					Group:      "Volume & File Permissions",
 					Name:       fmt.Sprintf("Incompatible OS Path: %s", vol.Source),
 					Status:     output.CheckFailed,
-					Error:      fmt.Sprintf("Bind-mount host path '%s' for service %s uses Windows path conventions on a non-Windows OS.", vol.Source, svcName),
+					Error:      fmt.Sprintf("Bind-mount host path '%s' for service %s uses Windows path conventions on a non-Windows OS.", resolvedSource, svcName),
 					Mitigation: "Convert the path mapping in docker-compose.yml to use relative Unix paths (e.g., ./data instead of C:\\data).",
 				})
-				continue
-			}
-
-			resolvedSource := e.resolveEnvVars(vol.Source)
-			if resolvedSource == "" {
 				continue
 			}
 

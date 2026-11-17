@@ -3,6 +3,7 @@ package diagnostics
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/marcelo-lipienski/halo/output"
 	"github.com/moby/moby/api/types/container"
@@ -64,13 +66,28 @@ func ParseHostPortProto(p string) (string, string) {
 // portRangeWarnThreshold is the max ports in a range before warning. See ADR-0006.
 const portRangeWarnThreshold = 64
 
+func isAddrInUse(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, syscall.EADDRINUSE) {
+		return true
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "address already in use") ||
+		strings.Contains(errStr, "only one usage of each socket address")
+}
+
 func CheckSinglePortCollision(hostPort string, proto string) bool {
 	addrs := []string{"127.0.0.1", "0.0.0.0", "[::1]", "[::]"}
 	if proto == "udp" {
 		for _, addr := range addrs {
 			l, err := net.ListenPacket("udp", addr+":"+hostPort)
 			if err != nil {
-				return true
+				if isAddrInUse(err) {
+					return true
+				}
+				continue
 			}
 			_ = l.Close()
 		}
@@ -79,7 +96,10 @@ func CheckSinglePortCollision(hostPort string, proto string) bool {
 	for _, addr := range addrs {
 		l, err := net.Listen("tcp", addr+":"+hostPort)
 		if err != nil {
-			return true
+			if isAddrInUse(err) {
+				return true
+			}
+			continue
 		}
 		_ = l.Close()
 	}

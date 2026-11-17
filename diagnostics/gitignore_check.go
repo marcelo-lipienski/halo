@@ -366,13 +366,40 @@ func matchGitignorePattern(pattern string, relPath string) (bool, error) {
 
 	pattern = strings.TrimPrefix(pattern, "!")
 
+	isDirPattern := strings.HasSuffix(pattern, "/")
+	cleanPattern := strings.TrimSuffix(pattern, "/")
+
 	// Check if pattern is anchored.
 	anchored := false
 	if strings.HasPrefix(pattern, "/") {
 		anchored = true
 		pattern = pattern[1:]
-	} else if strings.Contains(strings.TrimSuffix(pattern, "/"), "/") {
+		cleanPattern = strings.TrimPrefix(cleanPattern, "/")
+	} else if strings.Contains(cleanPattern, "/") {
 		anchored = true
+	}
+
+	if isDirPattern {
+		if !anchored {
+			// Unanchored directory pattern: e.g. "dist/"
+			// Matches any directory segment of relPath
+			parts := strings.Split(relPath, "/")
+			for i := 0; i < len(parts)-1; i++ {
+				m, mErr := filepath.Match(cleanPattern, parts[i])
+				if mErr != nil {
+					return false, mErr
+				}
+				if m {
+					return true, nil
+				}
+			}
+			return false, nil
+		}
+		// Anchored directory pattern: e.g. "/dist/" or "build/dist/"
+		if relPath == cleanPattern || strings.HasPrefix(relPath, cleanPattern+"/") {
+			return true, nil
+		}
+		return matchGlob(cleanPattern+"/**", relPath)
 	}
 
 	var matched bool
